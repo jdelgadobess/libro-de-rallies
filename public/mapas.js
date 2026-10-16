@@ -142,6 +142,17 @@ export function openTiles(SQL, bytes) {
   return { get, minZoom: zr[0], maxZoom: zr[1], bounds, mime, close: () => db.close() };
 }
 
+// the off-road map kept on this device, for the route planner (null if none was imported)
+let orCache = null;
+export async function offroadMap() {
+  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || ""));
+  if (!maps.length) return null;
+  const m = maps[0];
+  if (!orCache || orCache.id !== m.id) orCache = { id: m.id, name: m.name, ...(await openPmtiles(m.blob, m.id)) };
+  await script(PROTOMAPS_JS);
+  return orCache;
+}
+
 /* ---------- the layers on the Leaflet map ---------- */
 export function setupLayers(lmap) {
   const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";

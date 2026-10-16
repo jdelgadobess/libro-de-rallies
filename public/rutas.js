@@ -1,0 +1,269 @@
+// Route planner: builds a road graph from the off-road map (OpenStreetMap roads and tracks in the .pmtiles file),
+// measures the driving distance between waypoints and proposes routes through a share of them.
+// Points are [lat, lon]; waypoints are {id, name, lat, lon, pts}.
+
+const R = 6371008.8, rad = Math.PI / 180;
+export const meters = (a, b) => {
+  const h = Math.sin((b[0] - a[0]) * rad / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin((b[1] - a[1]) * rad / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+const tile2lat = (y, z) => { const n = Math.PI - 2 * Math.PI * y / 2 ** z; return Math.atan(Math.sinh(n)) / rad; };
+const lat2tile = (lat, z) => (1 - Math.asinh(Math.tan(lat * rad)) / Math.PI) / 2 * 2 ** z;
+const lon2tile = (lon, z) => (lon + 180) / 360 * 2 ** z;
+
+// cost per metre of each kind of way; null = not used
+function costOf(p, paths) {
+  const k = p.kind, d = p.kind_detail;
+  if (["steps", "pier", "runway", "taxiway", "platform", "corridor", "elevator"].includes(d)) return null;
+  if (k === "highway" || k === "major_road") return 1;
+  if (k === "minor_road") return 1.02;
+  if (d === "track") return 1.1;
+  if (k === "path") return paths ? 1.8 : null;
+  if (k === "other") return 1.1;
+  return null;
+}
+
+// clip a polyline to the square [0, S]² so pieces from neighbouring tiles meet at the tile edge
+function clip(line, S) {
+  const out = []; let cur = null;
+  const inside = (p) => p.x >= 0 && p.x <= S && p.y >= 0 && p.y <= S;
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1], b = line[i];
+    let t0 = 0, t1 = 1; const dx = b.x - a.x, dy = b.y - a.y; let ok = true;
+    for (const [p, q] of [[-dx, a.x], [dx, S - a.x], [-dy, a.y], [dy, S - a.y]]) {
+      if (p === 0) { if (q < 0) { ok = false; break; } continue; }
+      const r = q / p;
+      if (p < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; } else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; }
+    }
+    if (!ok) { cur = null; continue; }
+    const p0 = { x: a.x + t0 * dx, y: a.y + t0 * dy }, p1 = { x: a.x + t1 * dx, y: a.y + t1 * dy };
+    if (!cur || t0 > 0 || !inside(a)) { cur = [p0]; out.push(cur); }
+    cur.push(p1);
+    if (t1 < 1) cur = null;
+  }
+  return out.filter((l) => l.length > 1);
+}
+
+// graph of the ways inside bbox [s, w, n, e]
+export async function buildGraph(pm, bbox, { paths = false, progress = () => {} } = {}) {
+  const P = window.protomapsL, src = new P.PmtilesSource(pm, false), S = 4096;
+  const [s, w, n, e] = bbox;
+  let z = 14, tx0, tx1, ty0, ty1;
+  for (; z >= 11; z--) {
+    tx0 = Math.floor(lon2tile(w, z)); tx1 = Math.floor(lon2tile(e, z)); ty0 = Math.floor(lat2tile(n, z)); ty1 = Math.floor(lat2tile(s, z));
+    if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= 1600) break;
+  }
+  const lat = [], lon = [], ids = new Map(), edges = [];
+  const node = (la, lo) => {
+    const k = Math.round(la * 2e5) + ":" + Math.round(lo * 2e5); // ~0.5 m grid
+    let id = ids.get(k); if (id === undefined) { id = lat.length; ids.set(k, id); lat.push(la); lon.push(lo); }
+    return id;
+  };
+  const total = (tx1 - tx0 + 1) * (ty1 - ty0 + 1); let done = 0;
+  for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) {
+    let feats = [];
+    try { feats = (await src.get({ z, x, y }, S)).get("roads") || []; } catch (er) {}
+    for (const f of feats) {
+      if (f.geomType !== 2) continue;
+      const c = costOf(f.props, paths); if (c === null) continue;
+      for (const l of f.geom) for (const piece of clip(l, S)) {
+        let prev = null;
+        for (const p of piece) {
+          const id = node(tile2lat(y + p.y / S, z), (x + p.x / S) / 2 ** z * 360 - 180);
+          if (prev !== null && prev !== id) edges.push(prev, id, c);
+          prev = id;
+        }
+      }
+    }
+    if (++done % 40 === 0) { progress(done / total); await new Promise((r) => setTimeout(r, 0)); }
+  }
+  const N = lat.length;
+  // dead ends within 15 m of another way are joined (tile seams and small gaps in the map)
+  const deg = new Uint32Array(N);
+  for (let i = 0; i < edges.length; i += 3) { deg[edges[i]]++; deg[edges[i + 1]]++; }
+  const grid = new Map(), cell = 0.0003;
+  const gk = (a, b) => Math.floor(a / cell) + ":" + Math.floor(b / cell);
+  for (let i = 0; i < N; i++) { const k = gk(lat[i], lon[i]); (grid.get(k) || grid.set(k, []).get(k)).push(i); }
+  for (let i = 0; i < N; i++) {
+    if (deg[i] !== 1) continue;
+    const ci = Math.floor(lat[i] / cell), cj = Math.floor(lon[i] / cell); let best = -1, bd = 15;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const j of grid.get((ci + a) + ":" + (cj + b)) || []) {
+      if (j === i) continue;
+      const d = meters([lat[i], lon[i]], [lat[j], lon[j]]);
+      if (d < bd && d > 0.01) { bd = d; best = j; }
+    }
+    if (best >= 0) edges.push(i, best, 1.2);
+  }
+  // adjacency in compact arrays
+  const off = new Uint32Array(N + 1);
+  for (let i = 0; i < edges.length; i += 3) { off[edges[i] + 1]++; off[edges[i + 1] + 1]++; }
+  for (let i = 0; i < N; i++) off[i + 1] += off[i];
+  const to = new Uint32Array(off[N]), wt = new Float32Array(off[N]), len = new Float32Array(off[N]), fill = off.slice(0, N);
+  for (let i = 0; i < edges.length; i += 3) {
+    const a = edges[i], b = edges[i + 1], m = meters([lat[a], lon[a]], [lat[b], lon[b]]);
+    to[fill[a]] = b; len[fill[a]] = m; wt[fill[a]++] = m * edges[i + 2];
+    to[fill[b]] = a; len[fill[b]] = m; wt[fill[b]++] = m * edges[i + 2];
+  }
+  progress(1);
+  return { N, lat: Float64Array.from(lat), lon: Float64Array.from(lon), off, to, wt, len, grid, cell, zoom: z };
+}
+
+// nearest node of the graph to a point (searching up to ~3 km)
+export function snap(g, p) {
+  const ci = Math.floor(p[0] / g.cell), cj = Math.floor(p[1] / g.cell);
+  let best = -1, bd = Infinity;
+  for (let r = 0; r <= 100; r++) {
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+      if (Math.max(Math.abs(a), Math.abs(b)) !== r) continue;
+      for (const j of g.grid.get((ci + a) + ":" + (cj + b)) || []) {
+        const d = meters(p, [g.lat[j], g.lon[j]]); if (d < bd) { bd = d; best = j; }
+      }
+    }
+    if (best >= 0 && bd < (r - 1) * g.cell * 90000) break; // nothing closer can be in further rings
+  }
+  return { node: best, d: bd };
+}
+
+class Heap {
+  constructor() { this.k = []; this.v = []; }
+  push(key, val) {
+    const k = this.k, v = this.v; let i = k.length; k.push(key); v.push(val);
+    while (i > 0) { const p = (i - 1) >> 1; if (k[p] <= key) break; k[i] = k[p]; v[i] = v[p]; i = p; }
+    k[i] = key; v[i] = val;
+  }
+  pop() {
+    const k = this.k, v = this.v, top = v[0], lk = k.pop(), lv = v.pop(), n = k.length;
+    if (n) {
+      let i = 0;
+      for (;;) { let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && k[c + 1] < k[c]) c++; if (k[c] >= lk) break; k[i] = k[c]; v[i] = v[c]; i = c; }
+      k[i] = lk; v[i] = lv;
+    }
+    return top;
+  }
+  get size() { return this.k.length; }
+}
+// shortest paths from one node until every target is settled
+export function dijkstra(g, from, targets, avoid = null) {
+  const dist = new Float64Array(g.N).fill(Infinity), prev = new Int32Array(g.N).fill(-1), done = new Uint8Array(g.N);
+  const left = new Set(targets); dist[from] = 0; const h = new Heap(); h.push(0, from);
+  while (h.size && left.size) {
+    const u = h.pop(); if (done[u]) continue; done[u] = 1; left.delete(u);
+    for (let e = g.off[u]; e < g.off[u + 1]; e++) {
+      const v = g.to[e], nd = dist[u] + (avoid && avoid[e] ? g.wt[e] * 1.8 : g.wt[e]);
+      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; h.push(nd, v); }
+    }
+  }
+  return { dist, prev };
+}
+
+/* ---------- choosing and ordering the waypoints ---------- */
+const OFF = 2.5; // a metre off the map's ways counts like 2.5 metres of track
+
+// cost matrix between waypoints, with the snapped nodes
+export async function matrix(g, wps, progress = () => {}) {
+  const sn = wps.map((w) => snap(g, [w.lat, w.lon]));
+  const n = wps.length, D = Array.from({ length: n }, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    const targets = sn.map((s) => s.node).filter((x) => x >= 0);
+    const { dist } = sn[i].node >= 0 ? dijkstra(g, sn[i].node, targets) : { dist: null };
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      const straight = meters([wps[i].lat, wps[i].lon], [wps[j].lat, wps[j].lon]) * OFF * 1.2;
+      const road = dist && sn[j].node >= 0 ? sn[i].d * OFF + dist[sn[j].node] + sn[j].d * OFF : Infinity;
+      D[i][j] = Math.min(road, straight);
+    }
+    progress((i + 1) / n);
+    if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
+  }
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) D[i][j] = D[j][i] = Math.min(D[i][j], D[j][i]);
+  return { D, sn };
+}
+
+const tourCost = (D, seq) => { let c = 0; for (let i = 1; i < seq.length; i++) c += D[seq[i - 1]][seq[i]]; return c; };
+// best order for an open path with fixed first and last
+function optimise(D, seq) {
+  // nearest neighbour from the start, then 2-opt and or-opt until nothing improves
+  const first = seq[0], last = seq[seq.length - 1], rest = new Set(seq.slice(1, -1)), out = [first];
+  while (rest.size) { const u = out[out.length - 1]; let b = null; for (const v of rest) if (b === null || D[u][v] < D[u][b]) b = v; out.push(b); rest.delete(b); }
+  out.push(last);
+  for (let improved = true, guard = 0; improved && guard < 200; guard++) {
+    improved = false;
+    for (let i = 1; i < out.length - 2; i++) for (let j = i + 1; j < out.length - 1; j++) {
+      const d = D[out[i - 1]][out[j]] + D[out[i]][out[j + 1]] - D[out[i - 1]][out[i]] - D[out[j]][out[j + 1]];
+      if (d < -1e-6) { out.splice(i, j - i + 1, ...out.slice(i, j + 1).reverse()); improved = true; }
+    }
+    for (let i = 1; i < out.length - 1; i++) {
+      const v = out[i], rem = D[out[i - 1]][v] + D[v][out[i + 1]] - D[out[i - 1]][out[i + 1]];
+      let bj = -1, bd = rem - 1e-6;
+      for (let j = 0; j < out.length - 1; j++) {
+        if (j === i || j === i - 1) continue;
+        const ins = D[out[j]][v] + D[v][out[j + 1]] - D[out[j]][out[j + 1]];
+        if (ins < bd) { bd = ins; bj = j; }
+      }
+      if (bj >= 0) { out.splice(i, 1); out.splice(bj < i ? bj + 1 : bj, 0, v); improved = true; }
+    }
+  }
+  return out;
+}
+// drop waypoints until `keep` remain: each time the one whose detour (divided by its value) is largest
+function prune(D, seq, keep, value, reorder) {
+  seq = seq.slice();
+  while (seq.length > keep) {
+    let bi = -1, bs = -Infinity;
+    for (let i = 1; i < seq.length - 1; i++) {
+      const save = D[seq[i - 1]][seq[i]] + D[seq[i]][seq[i + 1]] - D[seq[i - 1]][seq[i + 1]];
+      const s = save / value(seq[i]);
+      if (s > bs) { bs = s; bi = i; }
+    }
+    if (bi < 0) break;
+    seq.splice(bi, 1);
+    if (reorder) seq = optimise(D, seq);
+  }
+  return seq;
+}
+
+// several proposals through `share` of the waypoints (first and last always in)
+export function proposals(D, wps, share) {
+  const n = wps.length, keep = Math.max(2, Math.min(n, Math.round(n * share)));
+  const all = wps.map((_, i) => i), one = () => 1, byPts = (i) => Math.max(5, wps[i].pts || 0);
+  const out = [
+    { key: "corta", name: "La más corta", seq: optimise(D, prune(D, optimise(D, all), keep, one, true)) },
+    { key: "roadbook", name: "En el orden del roadbook", seq: prune(D, all, keep, one, false) },
+  ];
+  if (wps.some((w) => w.pts)) out.push({ key: "puntos", name: "Más puntos por km", seq: optimise(D, prune(D, optimise(D, all), keep, byPts, true)) });
+  const seen = new Set();
+  return out.filter((p) => { const k = p.seq.join(","); if (seen.has(k)) return false; seen.add(k); return true; })
+    .map((p) => ({ ...p, cost: tourCost(D, p.seq) }));
+}
+
+// the drawn route of a proposal: along the ways, straight where the map has none.
+// `avoid` (one flag per edge) makes the ways of another route cost more, to find a different one
+export function geometry(g, wps, sn, seq, avoid = null) {
+  const used = new Uint8Array(g.to.length);
+  const mark = (u, v) => {
+    for (let e = g.off[u]; e < g.off[u + 1]; e++) if (g.to[e] === v) used[e] = 1;
+    for (let e = g.off[v]; e < g.off[v + 1]; e++) if (g.to[e] === u) used[e] = 1;
+  };
+  const pts = [], add = (p) => { const q = pts[pts.length - 1]; if (!q || q[0] !== p[0] || q[1] !== p[1]) pts.push(p); };
+  let road = 0, off = 0;
+  for (let k = 1; k < seq.length; k++) {
+    const a = seq[k - 1], b = seq[k], A = [wps[a].lat, wps[a].lon], B = [wps[b].lat, wps[b].lon];
+    const sa = sn[a], sb = sn[b];
+    const straight = meters(A, B);
+    let path = null;
+    if (sa.node >= 0 && sb.node >= 0) {
+      const { dist, prev } = dijkstra(g, sa.node, [sb.node], avoid);
+      if (dist[sb.node] < Infinity && sa.d * OFF + dist[sb.node] + sb.d * OFF <= straight * OFF * 1.2 * (avoid ? 1.8 : 1)) {
+        path = []; for (let u = sb.node; u !== -1; u = prev[u]) path.push(u); path.reverse();
+        for (let i = 1; i < path.length; i++) mark(path[i - 1], path[i]);
+      }
+    }
+    add(A);
+    if (path) {
+      off += sa.d + sb.d;
+      for (let i = 0; i < path.length; i++) { const p = [Math.round(g.lat[path[i]] * 1e6) / 1e6, Math.round(g.lon[path[i]] * 1e6) / 1e6]; if (i) road += meters(pts[pts.length - 1], p); add(p); }
+    } else off += straight;
+    add(B);
+  }
+  return { pts, km: (road + off) / 1000, offKm: off / 1000, used };
+}

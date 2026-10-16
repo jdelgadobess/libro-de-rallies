@@ -1,5 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
-import { setupLayers, idb } from "./mapas.js";
+import { setupLayers, idb, offroadMap } from "./mapas.js";
+import { buildGraph, matrix, proposals, geometry } from "./rutas.js";
 
 const CFG = window.APP_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
@@ -20,7 +21,7 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ["#c1272d", "#2f4fb5", "#006233", "#e3a21a", "#b5532c", "#1b8a8a", "#7a3b8f", "#d9662b", "#4f7f2a", "#8c1d40"];
-const state = { user: null, role: null, rallies: [], wps: [], tracks: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
+const state = { tab: "libro", user: null, role: null, rallies: [], wps: [], tracks: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
 let channel = null, bootedFor;
 const canEdit = () => state.role === "admin" || state.role === "editor";
 
@@ -244,7 +245,7 @@ function render() {
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
-  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads();
+  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads(); renderPlan();
 }
 
 function renderTable() {
@@ -268,7 +269,7 @@ function renderTable() {
     const tr = document.createElement("tr"); tr.id = "row-" + w.id; tr.className = (state.hi === w.id ? "hi" : "") + (filt.off.has(w.id) ? " off" : "");
     const tdc = document.createElement("td"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.style.width = "auto";
     cb.checked = !filt.off.has(w.id); cb.setAttribute("aria-label", "Ver " + w.name + " en el mapa");
-    cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); tr.classList.toggle("off", !cb.checked); renderMap(); renderDownloads(); renderScope(); };
+    cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); tr.classList.toggle("off", !cb.checked); renderMap(); renderDownloads(); renderScope(); renderPlan(); };
     tdc.append(cb); tr.append(tdc);
     [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"]]
       .forEach(([t, cls]) => { const td = document.createElement("td"); td.textContent = t; if (cls) td.className = cls; tr.append(td); });
@@ -331,7 +332,7 @@ function renderPtsFilter() {
   });
 }
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
-const refilter = () => { renderTable(); renderMap(); renderDownloads(); };
+const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
 $("allStages").onclick = () => pickStage("all");
 // step 2's stage number, its chips and the table's stage filter always show the same stage
@@ -390,6 +391,12 @@ function renderMap() {
     L.polyline(seg, { color: stageColor(stageKey(t)), weight: 3.5, opacity: .95 }).bindTooltip(t.name).addTo(layer);
     seg.forEach((p) => pts.push(p));
   }));
+  if (state.tab === "plan") plan.alts.forEach((a, i) => {
+    const on = plan.sel === i;
+    if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
+    L.polyline(a.pts, { color: a.color, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
+      .bindTooltip(a.name).on("click", () => { plan.sel = i; renderPlan(); renderMap(); }).addTo(layer);
+  });
   if (drawing) {
     L.polyline(drawing.pts, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(drawing.pts, { color: "#ff7a00", weight: 4, opacity: 1, interactive: false }).addTo(layer);
@@ -408,7 +415,8 @@ function renderMap() {
   }
   list.forEach((w) => {
     const hi = state.hi === w.id || measure.includes(w.id) || (joined && joined.has(w.id));
-    const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: stageColor(stageKey(w)), fillOpacity: 1 })
+    const out = state.tab === "plan" && plan.sel !== null && plan.alts[plan.sel] && !plan.alts[plan.sel].ids.has(w.id);
+    const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: out ? "#888" : stageColor(stageKey(w)), fillOpacity: out ? .45 : 1, opacity: out ? .5 : 1 })
       .bindTooltip(w.pts ? `${w.name} · ${w.pts}` : w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
       .on("click", (e) => {
         L.DomEvent.stopPropagation(e);
@@ -711,6 +719,91 @@ async function saveTrack(name, segs, msgEl, wps = []) {
     return true;
   } catch (e) { msgEl.textContent = writeErr(e); return false; }
 }
+
+/* ---------- route planner (its own tab) ---------- */
+const PLAN_COLORS = ["#ff7a00", "#00a6d6", "#d81b60", "#7cb342", "#8e24aa"];
+const plan = { alts: [], sel: null, graph: null, graphKey: "", busy: false };
+function setTab(t) {
+  state.tab = t;
+  document.body.classList.toggle("tab-plan", t === "plan");
+  $("tabLibro").setAttribute("aria-selected", String(t !== "plan")); $("tabPlan").setAttribute("aria-selected", String(t === "plan"));
+  if (drawing) { drawing = null; renderDraw(); }
+  renderPlan(); renderMap();
+  if (lmap) setTimeout(() => lmap.invalidateSize(), 0);
+}
+$("tabLibro").onclick = () => setTab("libro");
+$("tabPlan").onclick = () => setTab("plan");
+function renderPlan() {
+  if (state.tab !== "plan") return;
+  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; }
+  const wps = mapWps();
+  $("pScope").textContent = state.stageFilter === "all"
+    ? "Elige una etapa en el paso 2."
+    : `${stageLabel(state.stageFilter)} · ${wps.length} waypoints marcados` + (sumPts(wps) ? ` (${sumPts(wps)} pts)` : "") + ". Desmarca en la tabla los que no quieras tener en cuenta.";
+  $("pRun").disabled = plan.busy || state.stageFilter === "all" || wps.length < 3;
+  const ul = $("pAlts"); ul.textContent = "";
+  plan.alts.forEach((a, i) => {
+    const li = document.createElement("li"); li.className = plan.sel === i ? "on" : "";
+    const t = document.createElement("div"); t.className = "t";
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = a.color;
+    t.append(sw, a.name);
+    const d = document.createElement("div"); d.className = "d";
+    d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista`;
+    const d2 = document.createElement("div"); d2.className = "d"; d2.textContent = a.wps.map((w) => w.name).join(" → ");
+    const b = document.createElement("div"); b.className = "btns";
+    const sv = document.createElement("button"); sv.type = "button"; sv.className = "ghost"; sv.textContent = "Guardar como track"; sv.dataset.edit = "";
+    sv.onclick = (e) => { e.stopPropagation(); saveTrack(a.name + " · Etapa " + state.stageFilter, [a.pts], $("pMsg"), a.wps); };
+    const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
+    gx.onclick = (e) => {
+      e.stopPropagation(); const nm = a.name + " · Etapa " + state.stageFilter;
+      download(slug(nm) + ".gpx", buildGpx(a.wps, nm, [{ name: nm, segs: [a.pts] }], true), "application/gpx+xml");
+    };
+    if (canEdit()) b.append(sv); b.append(gx);
+    li.append(t, d, d2, b);
+    li.onclick = () => { plan.sel = i; renderPlan(); renderMap(); if (lmap) lmap.fitBounds(a.pts, { padding: [30, 30] }); };
+    ul.append(li);
+  });
+}
+$("pRun").onclick = async () => {
+  const msg = $("pMsg"), wps = mapWps(), share = Math.min(100, Math.max(10, parseInt($("pPct").value, 10) || 70)) / 100;
+  if (state.stageFilter === "all" || wps.length < 3) return;
+  plan.busy = true; plan.alts = []; plan.sel = null; renderPlan(); renderMap();
+  try {
+    msg.textContent = "Abriendo el mapa off-road…";
+    plan.stage = state.stageFilter;
+    const or = await offroadMap();
+    if (!or) { msg.textContent = "Primero importa el mapa off-road de Marruecos en el paso 3 de la pestaña «Libro de ruta»."; return; }
+    const pad = 0.05, bbox = [Math.min(...wps.map((w) => w.lat)) - pad, Math.min(...wps.map((w) => w.lon)) - pad, Math.max(...wps.map((w) => w.lat)) + pad, Math.max(...wps.map((w) => w.lon)) + pad];
+    const key = or.id + "|" + bbox.map((v) => v.toFixed(3)).join(",") + "|" + $("pPaths").checked;
+    if (plan.graphKey !== key) {
+      plan.graph = await buildGraph(or.p, bbox, { paths: $("pPaths").checked, progress: (f) => { msg.textContent = `Leyendo las pistas del mapa… ${Math.round(f * 100)} %`; } });
+      plan.graphKey = key;
+    }
+    const g = plan.graph;
+    if (!g.N) { msg.textContent = "El mapa off-road no tiene pistas en esta zona."; return; }
+    const { D, sn } = await matrix(g, wps, (f) => { msg.textContent = `Midiendo distancias por las pistas… ${Math.round(f * 100)} %`; });
+    msg.textContent = "Buscando las mejores rutas…"; await new Promise((r) => setTimeout(r, 0));
+    const mk = (p, geo, name) => {
+      const list = p.seq.map((i) => wps[i]);
+      return { name, pts: geo.pts, km: geo.km, offKm: geo.offKm, wps: list, ids: new Set(list.map((w) => w.id)), sum: sumPts(list), of: wps.length };
+    };
+    const props = proposals(D, wps, share), alts = [];
+    props.forEach((p, k) => {
+      const geo = geometry(g, wps, sn, p.seq); alts.push(mk(p, geo, p.name));
+      // the same waypoints by other tracks, when there is a real alternative
+      if (k === 0) {
+        const v = geometry(g, wps, sn, p.seq, geo.used);
+        let same = 0, n = 0; for (let e = 0; e < v.used.length; e++) if (v.used[e]) { n++; if (geo.used[e]) same++; }
+        if (n && same / n < 0.85) alts.push(mk(p, v, p.name + " · por otras pistas"));
+      }
+    });
+    plan.alts = alts.map((a, i) => ({ ...a, color: PLAN_COLORS[i % PLAN_COLORS.length] })); plan.sel = 0;
+    const far = sn.filter((s) => s.d > 1000).length;
+    msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
+    renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
+  } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); }
+  finally { plan.busy = false; renderPlan(); }
+};
 
 /* ---------- drawing a route by hand on the map ---------- */
 let drawing = null;

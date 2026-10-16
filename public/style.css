@@ -215,3 +215,15 @@ td.pts select { width: auto; padding: 2px 4px; font-size: .8rem }
 .layersbar label.btn:hover { border-color: var(--blue) }
 label.import.map { background: #5b4a2e; font-size: 1.05rem }
 label.import.map.off { background: #8b4513; font-size: 1.15rem }
+.tabs { display: flex; gap: 4px; margin: 0 0 14px; border-bottom: 2px solid var(--line) }
+.tabs button { background: transparent; color: var(--ink); border: 1px solid transparent; border-bottom: 0; border-radius: 3px 3px 0 0; font-family: var(--display); font-size: 1.05rem; letter-spacing: .04em; text-transform: uppercase; padding: 8px 16px; margin-bottom: -2px }
+.tabs button[aria-selected="true"] { background: var(--sheet-solid); border-color: var(--line); border-bottom: 2px solid var(--sheet-solid); color: var(--red) }
+.tab-plan [data-libro] { display: none !important }
+body:not(.tab-plan) #planPanel { display: none }
+.alts { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px }
+.alts li { border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; display: grid; gap: 6px; cursor: pointer }
+.alts li.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) }
+.alts .t { display: flex; gap: 8px; align-items: center; font-weight: 600 }
+.alts .sw { width: 18px; height: 5px; border-radius: 2px; flex: none }
+.alts .d { font-size: .82rem; color: var(--muted) }
+.alts .btns button { padding: 4px 9px; font-size: .8rem }

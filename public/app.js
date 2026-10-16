@@ -991,12 +991,19 @@ function renderDownloads() {
   const all = rallyWps();
   allStages().forEach((s) => {
     const b = document.createElement("button"); b.type = "button";
-    b.className = state.stageFilter === "all" || state.stageFilter === s ? "" : "ghost";
-    b.textContent = "GPX " + (s === "" ? "sin etapa" : "etapa " + s);
+    // the stage on screen downloads what is selected (filters, ticks and the tracks shown); any other stage, all of it
+    const shown = state.stageFilter === "all" || state.stageFilter === s;
+    const total = all.filter((w) => stageKey(w) === s).length;
+    const pick = () => shown
+      ? [mapWps().filter((w) => stageKey(w) === s), visibleTracks().filter((t) => stageKey(t) === s)]
+      : [all.filter((w) => stageKey(w) === s), rallyTracks().filter((t) => stageKey(t) === s)];
+    const [l0] = pick();
+    b.className = shown ? "" : "ghost";
+    b.textContent = "GPX " + (s === "" ? "sin etapa" : "etapa " + s) + (shown && l0.length !== total ? ` (${l0.length} WP)` : "");
     b.onclick = () => {
-      const list = all.filter((w) => stageKey(w) === s), trks = rallyTracks().filter((t) => stageKey(t) === s);
+      const [list, trks] = pick();
       download(stageFile(s) + ".gpx", buildGpx(list, rally().year + " " + rally().name + " · " + stageLabel(s), trks), "application/gpx+xml");
-      $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length} waypoints en orden` + (trks.length ? ` y ${trks.length} track${trks.length > 1 ? "s" : ""}.` : ".");
+      $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length === total ? list.length : list.length + " de " + total} waypoints en orden` + (trks.length ? ` y ${trks.length === 1 ? "el track «" + trks[0].name + "»" : trks.length + " tracks"}.` : ".");
     };
     box.append(b);
   });

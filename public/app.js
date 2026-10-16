@@ -62,7 +62,7 @@ const stageLabel = (k) => k === "" ? "Sin etapa" : "Etapa " + k;
 const rallyWps = () => state.wps.filter((w) => w.rallyId === state.rallyId && Number.isFinite(w.lat) && Number.isFinite(w.lon));
 const stagesOf = (list) => [...new Set(list.map(stageKey))].sort((a, b) => (a === "") - (b === "") || natural(a, b));
 const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId);
-const allStages = () => stagesOf([...rallyWps(), ...rallyTracks()]);
+const allStages = () => stagesOf([...rallyWps(), ...rallyTracks(), ...(currentStage() ? [{ stage: currentStage() }] : [])]);
 const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter) : [];
 const stageColor = (s) => PALETTE[(allStages().indexOf(s) + PALETTE.length) % PALETTE.length];
 // roadbook order: DSS first, then by the number in the name (WP2 before WP10), ASS last; ties by reading order
@@ -212,7 +212,7 @@ function render() {
     b.setAttribute("aria-pressed", String(state.stageFilter === k));
     const n = k === "all" ? rallyWps().length : rallyWps().filter((w) => stageKey(w) === k).length;
     b.textContent = t + " · " + n;
-    b.onclick = () => { state.stageFilter = k; if (k !== "all" && k !== "") $("stageNo").value = k; state.hi = null; render(); };
+    b.onclick = () => pickStage(k);
     sc.append(b);
   });
 
@@ -227,7 +227,8 @@ function renderTable() {
   const list = visibleWps();
   if (!list.length) {
     const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 7; td.className = "hint";
-    td.textContent = rallyWps().length && rally() ? "Ningún waypoint coincide con el filtro." : rally() ? "Aún no hay waypoints aquí." + (canEdit() ? " Importa las fotos del roadbook en el paso 3." : "") : "Todavía no hay ninguna prueba.";
+    const inStage = rallyWps().filter((w) => state.stageFilter === "all" || stageKey(w) === state.stageFilter).length;
+    td.textContent = inStage && rally() ? "Ningún waypoint coincide con el filtro." : rally() ? "Aún no hay waypoints " + (state.stageFilter === "all" ? "aquí." : "en la " + stageLabel(state.stageFilter).toLowerCase() + ".") + (canEdit() ? " Importa las fotos del roadbook en el paso 3." : "") : "Todavía no hay ninguna prueba.";
     tr.append(td); tb.append(tr);
   }
   let last = null;
@@ -276,7 +277,13 @@ function renderScope() {
 }
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); };
-$("fStage").onchange = (e) => { state.stageFilter = e.target.value; if (state.stageFilter !== "all" && state.stageFilter !== "") $("stageNo").value = state.stageFilter; state.hi = null; render(); };
+$("fStage").onchange = (e) => pickStage(e.target.value);
+// step 2's stage number, its chips and the table's stage filter always show the same stage
+function pickStage(k) {
+  state.stageFilter = k; state.hi = null;
+  $("stageNo").value = k === "all" ? "" : k;
+  render();
+}
 $("fText").addEventListener("input", (e) => { filt.text = e.target.value.trim().toLowerCase(); refilter(); });
 $("fFrom").addEventListener("input", (e) => { filt.from = numOrNull(e.target.value); refilter(); });
 $("fTo").addEventListener("input", (e) => { filt.to = numOrNull(e.target.value); refilter(); });
@@ -392,12 +399,12 @@ $("rallyDelYes").onclick = async () => {
 };
 
 /* ---------- step 2: stage ---------- */
-$("stageNo").addEventListener("input", () => $("stageNo").classList.remove("need"));
+$("stageNo").addEventListener("input", () => {
+  $("stageNo").classList.remove("need");
+  state.stageFilter = currentStage() || "all"; state.hi = null; render();
+});
 $("stageNo").addEventListener("change", () => {
   const s = currentStage();
-  // re-draw only when the selection changes, so a click on another button right after typing isn't lost
-  if (s && allStages().includes(s) && state.stageFilter !== s) { state.stageFilter = s; render(); }
-  else renderReview();
   if (s && state.photos.length && !state.pending && !state.reading) readPhotos();
 });
 
@@ -619,7 +626,7 @@ function updateParsed() {
 }
 $("wLat").addEventListener("input", updateParsed); $("wLon").addEventListener("input", updateParsed);
 function startEdit(w) {
-  $("moreWays").open = true; $("stageNo").value = stageKey(w);
+  $("moreWays").open = true; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
   $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || "";
   $("wLat").value = fmtCoord(w.lat, true, "dm"); $("wLon").value = fmtCoord(w.lon, false, "dm");
   $("wCancel").hidden = false; $("wSave").textContent = "Guardar cambios"; updateParsed();

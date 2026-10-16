@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
 import { setupLayers, idb, offroadMap } from "./mapas.js";
-import { buildGraph, matrix, proposals, geometry } from "./rutas.js";
+import { buildGraph, matrix, proposals, geometry, nearRoute, addTo } from "./rutas.js";
 
 const CFG = window.APP_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
@@ -748,7 +748,7 @@ function renderPlan() {
     const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = a.color;
     t.append(sw, a.name);
     const d = document.createElement("div"); d.className = "d";
-    d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista`;
+    d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.extra > 0 ? ` (${a.extra} más porque la ruta pasa al lado)` : "") + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista`;
     const d2 = document.createElement("div"); d2.className = "d"; d2.textContent = a.wps.map((w) => w.name).join(" → ");
     const b = document.createElement("div"); b.className = "btns";
     const sv = document.createElement("button"); sv.type = "button"; sv.className = "ghost"; sv.textContent = "Guardar como track"; sv.dataset.edit = "";
@@ -785,11 +785,16 @@ $("pRun").onclick = async () => {
     msg.textContent = "Buscando las mejores rutas…"; await new Promise((r) => setTimeout(r, 0));
     const mk = (p, geo, name) => {
       const list = p.seq.map((i) => wps[i]);
-      return { name, pts: geo.pts, km: geo.km, offKm: geo.offKm, wps: list, ids: new Set(list.map((w) => w.id)), sum: sumPts(list), of: wps.length };
+      const keep = Math.max(2, Math.min(wps.length, Math.round(wps.length * share)));
+      return { name, pts: geo.pts, km: geo.km, offKm: geo.offKm, wps: list, ids: new Set(list.map((w) => w.id)), sum: sumPts(list), of: wps.length, extra: list.length - keep };
     };
-    const props = proposals(D, wps, share), alts = [];
+    const detour = Math.max(0, parseFloat(String($("pNear").value).replace(",", ".")) || 0) * 1000;
+    const props = proposals(D, wps, share, detour), alts = [];
     props.forEach((p, k) => {
-      const geo = geometry(g, wps, sn, p.seq); alts.push(mk(p, geo, p.name));
+      // a waypoint the drawn route passes right by is always taken
+      let geo = geometry(g, wps, sn, p.seq);
+      for (let t = 0, near; t < 3 && (near = nearRoute(geo.pts, wps, p.seq, detour)).length; t++) { p.seq = addTo(D, p.seq, near, p.key === "roadbook"); geo = geometry(g, wps, sn, p.seq); }
+      alts.push(mk(p, geo, p.name));
       // the same waypoints by other tracks, when there is a real alternative
       if (k === 0) {
         const v = geometry(g, wps, sn, p.seq, geo.used);

@@ -181,11 +181,8 @@ export async function matrix(g, wps, progress = () => {}) {
 
 const tourCost = (D, seq) => { let c = 0; for (let i = 1; i < seq.length; i++) c += D[seq[i - 1]][seq[i]]; return c; };
 // best order for an open path with fixed first and last
-function optimise(D, seq) {
-  // nearest neighbour from the start, then 2-opt and or-opt until nothing improves
-  const first = seq[0], last = seq[seq.length - 1], rest = new Set(seq.slice(1, -1)), out = [first];
-  while (rest.size) { const u = out[out.length - 1]; let b = null; for (const v of rest) if (b === null || D[u][v] < D[u][b]) b = v; out.push(b); rest.delete(b); }
-  out.push(last);
+// 2-opt and or-opt until nothing improves
+function improve(D, out) {
   for (let improved = true, guard = 0; improved && guard < 200; guard++) {
     improved = false;
     for (let i = 1; i < out.length - 2; i++) for (let j = i + 1; j < out.length - 1; j++) {
@@ -205,6 +202,14 @@ function optimise(D, seq) {
   }
   return out;
 }
+// best order found from the current one and from a nearest-neighbour start
+function optimise(D, seq) {
+  const first = seq[0], last = seq[seq.length - 1], rest = new Set(seq.slice(1, -1)), nn = [first];
+  while (rest.size) { const u = nn[nn.length - 1]; let b = null; for (const v of rest) if (b === null || D[u][v] < D[u][b]) b = v; nn.push(b); rest.delete(b); }
+  nn.push(last);
+  const a = improve(D, nn), b = improve(D, seq.slice());
+  return tourCost(D, a) <= tourCost(D, b) ? a : b;
+}
 // drop waypoints until `keep` remain: each time the one whose detour (divided by its value) is largest
 function prune(D, seq, keep, value, reorder) {
   seq = seq.slice();
@@ -222,15 +227,84 @@ function prune(D, seq, keep, value, reorder) {
   return seq;
 }
 
+// cheapest place to slot waypoint v into seq (only between roadbook neighbours when `ordered`)
+function bestInsert(D, seq, v, ordered) {
+  let bj = -1, bd = Infinity;
+  for (let j = 0; j < seq.length - 1; j++) {
+    if (ordered && !(seq[j] < v && v < seq[j + 1])) continue;
+    const d = D[seq[j]][v] + D[v][seq[j + 1]] - D[seq[j]][seq[j + 1]];
+    if (d < bd) { bd = d; bj = j; }
+  }
+  return { at: bj + 1, cost: bd };
+}
+// swap a chosen waypoint for a left-out one whenever that makes the route shorter (same number of waypoints)
+function swaps(D, seq, n, ordered) {
+  for (let pass = 0, better = true; better && pass < 20; pass++) {
+    better = false;
+    const inSeq = new Set(seq);
+    for (let v = 0; v < n; v++) {
+      if (inSeq.has(v)) continue;
+      for (let i = 1; i < seq.length - 1; i++) {
+        const u = seq[i], save = D[seq[i - 1]][u] + D[u][seq[i + 1]] - D[seq[i - 1]][seq[i + 1]];
+        const without = seq.slice(0, i).concat(seq.slice(i + 1)), ins = bestInsert(D, without, v, ordered);
+        if (ins.at > 0 && ins.cost < save - 1) {
+          without.splice(ins.at, 0, v); seq = without; inSeq.delete(u); inSeq.add(v); better = true; break;
+        }
+      }
+    }
+  }
+  return seq;
+}
+// waypoints left out that lie within `r` metres of the drawn route (to add them and draw again)
+export function nearRoute(pts, wps, seq, r = 300) {
+  const inSeq = new Set(seq), out = [];
+  wps.forEach((w, v) => {
+    if (inSeq.has(v)) return;
+    const k = Math.cos(w.lat * rad) * 111320, M = 110540;
+    for (let i = 1; i < pts.length; i++) {
+      const ax = (pts[i - 1][1] - w.lon) * k, ay = (pts[i - 1][0] - w.lat) * M, bx = (pts[i][1] - w.lon) * k, by = (pts[i][0] - w.lat) * M;
+      const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+      if (Math.hypot(ax + t * dx, ay + t * dy) <= r) { out.push(v); return; }
+    }
+  });
+  return out;
+}
+// slot extra waypoints into a route at their cheapest place
+export function addTo(D, seq, extra, ordered = false) {
+  seq = seq.slice();
+  for (const v of extra) { const ins = bestInsert(D, seq, v, ordered); if (ins.at > 0) seq.splice(ins.at, 0, v); }
+  return ordered ? seq : optimise(D, seq);
+}
+// waypoints the route passes close to are taken too, even beyond the share asked for
+// `limit`: extra cost (≈ metres of track) a waypoint may add and still be "on the way"
+function pickup(D, seq, n, ordered, limit) {
+  for (;;) {
+    const inSeq = new Set(seq); let bv = -1, best = { cost: limit };
+    for (let v = 0; v < n; v++) {
+      if (inSeq.has(v)) continue;
+      const ins = bestInsert(D, seq, v, ordered);
+      if (ins.at > 0 && ins.cost <= best.cost) { best = ins; bv = v; }
+    }
+    if (bv < 0) return seq;
+    seq = seq.slice(); seq.splice(best.at, 0, bv);
+  }
+}
+const polish = (D, seq, n, ordered, limit) => {
+  seq = swaps(D, seq, n, ordered); if (!ordered) seq = optimise(D, seq);
+  seq = pickup(D, seq, n, ordered, limit); return ordered ? seq : optimise(D, seq);
+};
+
 // several proposals through `share` of the waypoints (first and last always in)
-export function proposals(D, wps, share) {
+// `detour`: metres a waypoint may be off the route and still be picked up on the way
+export function proposals(D, wps, share, detour = 1000) {
+  const limit = detour * 2;
   const n = wps.length, keep = Math.max(2, Math.min(n, Math.round(n * share)));
   const all = wps.map((_, i) => i), one = () => 1, byPts = (i) => Math.max(5, wps[i].pts || 0);
   const out = [
-    { key: "corta", name: "La más corta", seq: optimise(D, prune(D, optimise(D, all), keep, one, true)) },
-    { key: "roadbook", name: "En el orden del roadbook", seq: prune(D, all, keep, one, false) },
+    { key: "corta", name: "La más corta", seq: polish(D, optimise(D, prune(D, optimise(D, all), keep, one, true)), n, false, limit) },
+    { key: "roadbook", name: "En el orden del roadbook", seq: polish(D, prune(D, all, keep, one, false), n, true, limit) },
   ];
-  if (wps.some((w) => w.pts)) out.push({ key: "puntos", name: "Más puntos por km", seq: optimise(D, prune(D, optimise(D, all), keep, byPts, true)) });
+  if (wps.some((w) => w.pts)) out.push({ key: "puntos", name: "Más puntos por km", seq: pickup(D, optimise(D, prune(D, optimise(D, all), keep, byPts, true)), n, false, limit) });
   const seen = new Set();
   return out.filter((p) => { const k = p.seq.join(","); if (seen.has(k)) return false; seen.add(k); return true; })
     .map((p) => ({ ...p, cost: tourCost(D, p.seq) }));

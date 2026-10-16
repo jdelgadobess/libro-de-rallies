@@ -168,3 +168,5 @@ label.import.trk { background: var(--green); font-size: 1.15rem }
 .tracks li { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 4px 0; font-size: .85rem }
 .tracks .sw { width: 22px; height: 4px; border-radius: 2px; flex: none }
 .tracks .em { flex: 1; overflow-wrap: anywhere }
+#stageNo.need { outline: 3px solid var(--saffron); outline-offset: 2px; animation: pulse 1s ease-in-out 3 }
+@keyframes pulse { 50% { outline-color: var(--red) } }

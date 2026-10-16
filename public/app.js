@@ -305,6 +305,14 @@ function openYearForm() {
   $("nyCancel").hidden = !state.rallies.length;
 }
 $("nyCancel").onclick = () => { $("yearForm").hidden = true; };
+// photos, tracks or waypoints arriving before any year exists: create it from the year form (this year by default)
+async function ensureRally() {
+  if (rally()) return rally();
+  const d = { year: parseInt($("nyYear").value, 10) || new Date().getFullYear(), name: $("nyName").value.trim() || "Rally de Marruecos" };
+  const ref = must(await sb.from("rallies").insert(d).select().single());
+  state.rallies.push(rallyIn(ref)); state.rallyId = ref.id; state.stageFilter = "all"; $("yearForm").hidden = true; render();
+  return rally();
+}
 $("yearForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const d = { year: parseInt($("nyYear").value, 10), name: $("nyName").value.trim() };
@@ -324,15 +332,18 @@ $("rallyDelYes").onclick = async () => {
 };
 
 /* ---------- step 2: stage ---------- */
+$("stageNo").addEventListener("input", () => $("stageNo").classList.remove("need"));
 $("stageNo").addEventListener("change", () => {
-  const s = currentStage(); if (s && allStages().includes(s)) state.stageFilter = s; render();
+  const s = currentStage();
+  // re-draw only when the selection changes, so a click on another button right after typing isn't lost
+  if (s && allStages().includes(s) && state.stageFilter !== s) { state.stageFilter = s; render(); }
+  else renderReview();
   if (s && state.photos.length && !state.pending && !state.reading) readPhotos();
 });
 
 /* ---------- step 3: photos ---------- */
 function setPhotos(files) {
   const all = [...files];
-  if (all.length && !rally()) { $("photos").value = ""; $("photoMsg").textContent = "Primero crea el año en el paso 1 (botón «Nuevo año») y luego importa las fotos."; return; }
   state.photos = all.filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
   const t = $("thumbs"); t.querySelectorAll("img").forEach((i) => URL.revokeObjectURL(i.src)); t.textContent = "";
   state.photos.forEach((f) => { const i = document.createElement("img"); i.src = URL.createObjectURL(f); i.alt = f.name; t.append(i); });
@@ -341,6 +352,7 @@ function setPhotos(files) {
   if (all.length && !state.photos.length) $("photoMsg").textContent = "Eso no parece una foto. Usa JPG, PNG o HEIC.";
   render();
   if (state.photos.length && currentStage()) readPhotos();
+  else if (state.photos.length) { $("stageNo").classList.add("need"); $("stageNo").focus(); }
 }
 $("photos").addEventListener("change", (e) => setPhotos(e.target.files));
 $("clearPhotos").onclick = () => { $("photos").value = ""; setPhotos([]); };
@@ -363,12 +375,13 @@ async function toJpeg(file, max = 2000) {
 $("readBtn").onclick = () => readPhotos();
 async function readPhotos() {
   const msg = $("photoMsg");
-  if (!currentStage()) { msg.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").focus(); return; }
+  if (!currentStage()) { msg.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").classList.add("need"); $("stageNo").focus(); return; }
+  try { await ensureRally(); } catch (e) { msg.textContent = writeErr(e); return; }
   state.reading = true; render();
   const found = []; let failed = false;
   try {
-    for (let i = 0; i < state.photos.length; i += 4) {
-      const batch = state.photos.slice(i, i + 4);
+    for (let i = 0; i < state.photos.length; i += 2) {
+      const batch = state.photos.slice(i, i + 2);
       msg.textContent = `Leyendo foto${batch.length > 1 ? "s" : ""} ${i + 1}${batch.length > 1 ? "–" + (i + batch.length) : ""} de ${state.photos.length}…`;
       const images = await Promise.all(batch.map((f) => toJpeg(f)));
       const { data, error } = await sb.functions.invoke("leer-roadbook", { body: { images } });
@@ -384,16 +397,41 @@ async function readPhotos() {
   }
   state.reading = false;
   if (found.length) {
-    state.pending = found.map((o) => ({
-      on: parseCoord(o.lat, true) !== null && parseCoord(o.lon, false) !== null,
+    const rows = found.map((o) => ({
+      on: true,
       name: String(o.name || "").trim(), latRaw: String(o.lat ?? ""), lonRaw: String(o.lon ?? ""), page: String(o.page || ""),
-      desc: [o.box ? "Casilla " + o.box : "", o.km ? "km " + o.km : "", o.note || ""].filter(Boolean).join(", "), doubt: !!o.dudoso,
+      desc: [o.box ? "Casilla " + o.box : "", o.km ? "km " + o.km : "", o.note || "", o.dudoso ? "revisar con la foto" : ""].filter(Boolean).join(", "), doubt: !!o.dudoso,
     }));
-    msg.textContent = `Leídos ${found.length} waypoints. Están en la tabla: pulsa Guardar en la etapa.`;
+    // good readings are saved straight away; only the ones that can't be used wait in the review table
+    const isOk = (x) => x.name && parseCoord(x.latRaw, true) !== null && parseCoord(x.lonRaw, false) !== null;
+    const good = rows.filter(isOk), bad = rows.filter((x) => !isOk(x));
+    try {
+      const res = await saveRows(good);
+      state.pending = bad.length ? bad : null;
+      $("photos").value = ""; setPhotos([]);
+      const doubts = good.filter((x) => x.doubt).length;
+      msg.textContent = `Guardados ${res.added} waypoints en la etapa ${currentStage()}` + (res.skipped ? ` (${res.skipped} ya estaban)` : "") + "." +
+        (doubts ? (doubts > 1 ? ` ${doubts} tienen algún dígito dudoso y salen marcados` : " Uno tiene algún dígito dudoso y sale marcado") + " «revisar con la foto» en la tabla." : "") +
+        (bad.length ? (bad.length > 1 ? ` ${bad.length} no se leyeron bien` : " Uno no se leyó bien") + ": corrígelo en la tabla de arriba y pulsa Guardar." : "");
+    } catch (e) { state.pending = rows; msg.textContent = writeErr(e); }
   } else if (!failed) msg.textContent = "No encontré waypoints con coordenadas en las fotos.";
   $("readBtn").hidden = !state.photos.length;
   render();
-  if (found.length) $("review").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (state.pending) $("review").scrollIntoView({ behavior: "smooth", block: "start" });
+  else if (found.length) $("wpBody").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function saveRows(rows) {
+  const st = currentStage(), r = rally();
+  const have = new Set(rallyWps().map((w) => stageKey(w) + "|" + w.name));
+  const seqBase = Date.now() * 100;
+  const batch = []; let skipped = 0;
+  rows.forEach((x, i) => {
+    if (have.has(st + "|" + x.name.trim())) { skipped++; return; }
+    batch.push(wpOut({ rallyId: r.id, stage: st, name: x.name.trim(), lat: parseCoord(x.latRaw, true), lon: parseCoord(x.lonRaw, false), page: x.page.trim(), desc: x.desc.trim(), seq: seqBase + i, source: "foto", by: state.user.email }));
+  });
+  if (batch.length) must(await sb.from("waypoints").insert(batch));
+  state.stageFilter = st; await loadAll();
+  return { added: batch.length, skipped };
 }
 
 function renderReview() {
@@ -427,19 +465,12 @@ $("revSave").onclick = async () => {
   const rows = state.pending.filter((x) => x.on);
   const bad = rows.filter((x) => parseCoord(x.latRaw, true) === null || parseCoord(x.lonRaw, false) === null || !x.name.trim());
   if (bad.length) { $("photoMsg").textContent = `Hay ${bad.length} fila(s) marcadas sin nombre o con coordenadas no válidas. Corrígelas o desmárcalas.`; return; }
-  const have = new Set(rallyWps().map((w) => stageKey(w) + "|" + w.name));
-  const seqBase = Date.now() * 100;
-  const batch = []; let skipped = 0;
-  rows.forEach((x, i) => {
-    if (have.has(st + "|" + x.name.trim())) { skipped++; return; }
-    batch.push(wpOut({ rallyId: r.id, stage: st, name: x.name.trim(), lat: parseCoord(x.latRaw, true), lon: parseCoord(x.lonRaw, false), page: x.page.trim(), desc: x.desc.trim(), seq: seqBase + i, source: "foto", by: state.user.email }));
-  });
   $("revSave").disabled = true;
   try {
-    if (batch.length) must(await sb.from("waypoints").insert(batch));
-    state.pending = null; state.stageFilter = st; await loadAll();
+    const res = await saveRows(rows);
+    state.pending = null;
     $("photos").value = ""; setPhotos([]);
-    $("photoMsg").textContent = `Guardados ${batch.length} waypoints en la etapa ${st || "(sin número)"}` + (skipped ? `; ${skipped} ya existían y no se duplicaron.` : ".");
+    $("photoMsg").textContent = `Guardados ${res.added} waypoints en la etapa ${st || "(sin número)"}` + (res.skipped ? `; ${res.skipped} ya existían y no se duplicaron.` : ".");
   } catch (e) { $("photoMsg").textContent = writeErr(e); }
   $("revSave").disabled = false; render();
 };
@@ -480,9 +511,9 @@ const kmOf = (segs) => {
 async function importTracks(files) {
   const msg = $("trkMsg");
   if (!files.length) return;
-  if (!rally()) { msg.textContent = "Primero crea el año en el paso 1 (botón «Nuevo año»)."; return; }
   const st = currentStage();
-  if (!st) { msg.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").focus(); return; }
+  if (!st) { msg.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").classList.add("need"); $("stageNo").focus(); return; }
+  try { await ensureRally(); } catch (e) { msg.textContent = writeErr(e); return; }
   msg.textContent = "Importando…";
   const rows = [], bad = [];
   for (const f of files) {

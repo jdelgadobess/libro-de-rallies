@@ -137,8 +137,8 @@ td.act a, td.act button { font-size: .8rem; padding: 3px 7px }
 .review td input.nm { width: 6.5em; font-weight: 600 }
 .review td input.sm { width: 5em }
 a { color: inherit }
-a.gm { font-weight: 600; text-decoration: none; border: 1px solid var(--line); border-radius: 3px; display: inline-block; color: var(--blue) }
-a.gm:hover { border-color: var(--blue) }
+a.gm, button.gm { font-weight: 600; text-decoration: none; border: 1px solid var(--line); border-radius: 3px; display: inline-block; color: var(--blue) }
+a.gm:hover, button.gm:hover { border-color: var(--blue) }
 .foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 10px 12px }
 .fmt { display: inline-flex; gap: 6px; align-items: center; font-size: .8rem; color: var(--muted) }
 .fmt select { width: auto }
@@ -179,3 +179,4 @@ label.import.trk { background: var(--green); font-size: 1.15rem }
 .filters label.chk input { width: auto }
 .filters .btns { margin-left: auto }
 tr.off td:not(:first-child) { opacity: .45 }
+button.gm { background: transparent; font-family: inherit; line-height: inherit; text-transform: none; letter-spacing: 0 }

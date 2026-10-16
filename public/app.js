@@ -239,8 +239,14 @@ function renderTable() {
     [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"], [w.desc || "", ""]]
       .forEach(([t, cls]) => { const td = document.createElement("td"); td.textContent = t; if (cls) td.className = cls; tr.append(td); });
     const act = document.createElement("td"); act.className = "act";
+    const earthBtn = (w) => { // one waypoint, opened in Google Earth Pro
+      const b = document.createElement("button"); b.type = "button"; b.className = "gm"; b.textContent = "Earth";
+      b.title = "Abrir " + w.name + " en Google Earth Pro";
+      b.onclick = () => download(slug(w.name) + ".kml", buildKml([w]), "application/vnd.google-earth.kml+xml");
+      return b;
+    };
     const link = (txt, href) => { const a = document.createElement("a"); a.className = "gm"; a.target = "_blank"; a.rel = "noopener"; a.href = href; a.textContent = txt; return a; };
-    act.append(link("Maps", `https://www.google.com/maps/search/?api=1&query=${w.lat},${w.lon}`), " ", link("Earth", `https://earth.google.com/web/search/${w.lat},${w.lon}`));
+    act.append(link("Maps", `https://www.google.com/maps/search/?api=1&query=${w.lat},${w.lon}`), " ", earthBtn(w));
     if (canEdit()) {
       const ed = document.createElement("button"); ed.type = "button"; ed.className = "ghost"; ed.textContent = "Editar"; ed.onclick = () => startEdit(w);
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
@@ -740,7 +746,7 @@ function renderDownloads() {
 $("openEarth").onclick = () => {
   const f = (state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter)) + "_Earth";
   download(f + ".kml", buildKml(mapWps(), visibleTracks()), "application/vnd.google-earth.kml+xml");
-  $("gMsg").textContent = `Descargado ${f}.kml. Ábrelo desde la barra de descargas y se abre en Google Earth.`;
+  $("gMsg").textContent = `Descargado ${f}.kml. Pínchalo en la barra de descargas y se abre en Google Earth Pro.`;
 };
 $("dlSel").onclick = () => {
   const list = mapWps(), trks = visibleTracks(), f = (state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter)) + "_seleccion";

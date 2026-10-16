@@ -359,6 +359,32 @@ $("fClear").onclick = () => {
 
 /* ---------- map (satellite, no key needed) ---------- */
 let lmap = null, layer = null, fitKey = "", measure = [];
+// direction arrows along tracks and routes, spaced on screen so they stay readable at any zoom
+let arrowLayer = null, arrowLines = [];
+const arrow = (pts, color) => { if (pts.length > 1) arrowLines.push({ pts, color }); };
+function drawArrows() {
+  if (!arrowLayer) return;
+  arrowLayer.clearLayers();
+  const view = lmap.getBounds().pad(0.1), STEP = 110;
+  arrowLines.forEach(({ pts, color }) => {
+    let left = STEP / 2, prev = lmap.latLngToLayerPoint(pts[0]);
+    for (let i = 1; i < pts.length; i++) {
+      const cur = lmap.latLngToLayerPoint(pts[i]), len = prev.distanceTo(cur);
+      if (len > 0) {
+        const ang = Math.atan2(cur.y - prev.y, cur.x - prev.x) * 180 / Math.PI;
+        for (let d = left; d <= len; d += STEP) {
+          const at = lmap.layerPointToLatLng(L.point(prev.x + (cur.x - prev.x) * d / len, prev.y + (cur.y - prev.y) * d / len));
+          if (!view.contains(at)) continue;
+          L.marker(at, { pane: "arrows", interactive: false, keyboard: false, icon: L.divIcon({ className: "dir-arrow", iconSize: [24, 24], iconAnchor: [12, 12],
+            html: `<svg viewBox="0 0 24 24" style="transform:rotate(${ang.toFixed(0)}deg)"><circle cx="12" cy="12" r="10" fill="${color}" stroke="#000" stroke-width="1.5"/><path d="M8 6 L17 12 L8 18 L10.5 12 Z" fill="#fff" stroke="#000" stroke-width="1" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
+        }
+        left = ((left - len) % STEP + STEP) % STEP;
+        if (left === 0) left = STEP;
+      }
+      prev = cur;
+    }
+  });
+}
 const rad = Math.PI / 180;
 function distKm(a, b) {
   const h = Math.sin((b.lat - a.lat) * rad / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin((b.lon - a.lon) * rad / 2) ** 2;
@@ -376,6 +402,9 @@ function loadMaps() {
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
   setupLayers(lmap);
   layer = L.layerGroup().addTo(lmap);
+  lmap.createPane("arrows").style.zIndex = 450;
+  arrowLayer = L.layerGroup().addTo(lmap);
+  lmap.on("zoomend moveend", drawArrows);
   lmap.on("click", (e) => {
     if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
     if (measure.length) { measure = []; renderMap(); }
@@ -384,7 +413,7 @@ function loadMaps() {
 }
 function renderMap() {
   if (!lmap) return;
-  layer.clearLayers();
+  layer.clearLayers(); arrowLines = []; drawArrows();
   const joined = drawing ? new Set(drawing.wpAt.filter(Boolean)) : null;
   const list = mapWps().filter((w) => !joined || !$("drawOnly").checked || joined.has(w.id)), trks = visibleTracks();
   $("scaleTxt").textContent = list.length || trks.length ? "Colores por etapa · línea continua = track · vista satélite" : "Sin waypoints en esta selección";
@@ -393,6 +422,7 @@ function renderMap() {
   trks.forEach((t) => t.segs.forEach((seg) => {
     L.polyline(seg, { color: "#000", weight: 6, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(seg, { color: stageColor(stageKey(t)), weight: 3.5, opacity: .95 }).bindTooltip(t.name).addTo(layer);
+    arrow(seg, stageColor(stageKey(t)));
     seg.forEach((p) => pts.push(p));
   }));
   if (state.tab === "plan") plan.alts.forEach((a, i) => {
@@ -400,10 +430,12 @@ function renderMap() {
     if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(a.pts, { color: a.color, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
       .bindTooltip(a.name).on("click", () => { plan.sel = i; renderPlan(); renderMap(); }).addTo(layer);
+    if (on) arrow(a.pts, a.color);
   });
   if (drawing) {
     L.polyline(drawing.pts, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(drawing.pts, { color: "#ff7a00", weight: 4, opacity: 1, interactive: false }).addTo(layer);
+    arrow(drawing.pts, "#ff7a00");
     drawing.pts.forEach((p) => L.circleMarker(p, { radius: 4, color: "#ff7a00", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
   }
   // distance between the two waypoints tapped
@@ -438,6 +470,7 @@ function renderMap() {
     if (pts.length === 1) lmap.setView(pts[0], 15);
     else lmap.fitBounds(pts, { padding: [40, 40] });
   }
+  drawArrows();
 }
 
 /* ---------- step 1: years ---------- */

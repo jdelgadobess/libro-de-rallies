@@ -10,8 +10,13 @@ const $ = (id) => document.getElementById(id);
 let dbp = null;
 function idbOpen() {
   if (!dbp) dbp = new Promise((ok, ko) => {
-    const rq = indexedDB.open("libro-de-rallies", 1);
-    rq.onupgradeneeded = () => { rq.result.createObjectStore("maps", { keyPath: "id" }); rq.result.createObjectStore("kv"); };
+    const rq = indexedDB.open("libro-de-rallies", 2);
+    rq.onupgradeneeded = () => {
+      const d = rq.result, has = (n) => d.objectStoreNames.contains(n);
+      if (!has("maps")) d.createObjectStore("maps", { keyPath: "id" });
+      if (!has("kv")) d.createObjectStore("kv");
+      if (!has("videos")) d.createObjectStore("videos", { keyPath: "id" }); // own video files kept on this device
+    };
     rq.onsuccess = () => ok(rq.result); rq.onerror = () => ko(rq.error);
   });
   return dbp;

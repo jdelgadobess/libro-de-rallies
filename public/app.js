@@ -1,5 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
 import { setupLayers, idb, offroadMap } from "./mapas.js";
+import { setupMecanica } from "./mecanica.js";
 import { buildGraph, matrix, proposals, geometry, nearRoute, addTo } from "./rutas.js";
 
 const CFG = window.APP_CONFIG;
@@ -726,16 +727,20 @@ async function saveTrack(name, segs, msgEl, wps = []) {
 /* ---------- route planner (its own tab) ---------- */
 const PLAN_COLORS = ["#ff7a00", "#00a6d6", "#d81b60", "#7cb342", "#8e24aa"];
 const plan = { alts: [], sel: null, graph: null, graphKey: "", busy: false };
+let mec = null;
 function setTab(t) {
   state.tab = t;
   document.body.classList.toggle("tab-plan", t === "plan");
-  $("tabLibro").setAttribute("aria-selected", String(t !== "plan")); $("tabPlan").setAttribute("aria-selected", String(t === "plan"));
+  document.body.classList.toggle("tab-mec", t === "mec");
+  [["tabLibro", "libro"], ["tabPlan", "plan"], ["tabMec", "mec"]].forEach(([id, k]) => $(id).setAttribute("aria-selected", String(t === k)));
+  if (t === "mec") { mec = mec || setupMecanica({ sb, canEdit, user: () => state.user, writeErr }); mec.show(); }
   if (drawing) { drawing = null; renderDraw(); }
   renderPlan(); renderMap();
   if (lmap) setTimeout(() => lmap.invalidateSize(), 0);
 }
 $("tabLibro").onclick = () => setTab("libro");
 $("tabPlan").onclick = () => setTab("plan");
+$("tabMec").onclick = () => setTab("mec");
 function renderPlan() {
   if (state.tab !== "plan") return;
   if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; }

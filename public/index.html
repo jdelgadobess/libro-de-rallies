@@ -48,6 +48,7 @@
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" id="tabLibro" aria-selected="true">Libro de ruta</button>
     <button type="button" role="tab" id="tabPlan" aria-selected="false">Planificador de rutas</button>
+    <button type="button" role="tab" id="tabMec" aria-selected="false">Mecánica</button>
   </nav>
   <div class="desk">
     <div class="col">
@@ -282,7 +283,24 @@
     </div>
   </div>
 </div>
-  </div>
+    <section class="panel mec" id="mecBox">
+    <h2>Mecánica <small>Vídeos para arreglar la Panda</small></h2>
+    <p class="hint">Los vídeos de YouTube se ven con internet. Para llevarlos sin conexión, descárgalos con el botón «Descargar» de la app de YouTube en el móvil o la tablet (hace falta YouTube Premium). Los vídeos propios en MP4 que guardes aquí sí se ven sin internet.</p>
+    <div id="mecTopics"></div>
+    <form id="mecAdd" class="mecadd">
+      <label>Tema <input id="mecTopic" list="mecTopicList" placeholder="Alternador"></label>
+      <datalist id="mecTopicList"></datalist>
+      <span data-edit class="mecadd">
+        <label>Enlace de YouTube <input id="mecUrl" type="url" placeholder="https://www.youtube.com/watch?v=…"></label>
+        <label>Título <input id="mecTitle" placeholder="Opcional"></label>
+        <button type="submit">Añadir vídeo</button>
+      </span>
+      <label class="btn ghost" for="mecFile">Guardar un vídeo propio en este dispositivo</label>
+      <input type="file" id="mecFile" accept="video/*" multiple class="vh">
+    </form>
+    <p class="msg" id="mecMsg"></p>
+  </section>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

@@ -177,7 +177,7 @@
           <button type="button" class="ghost" id="drawStart">Dibujar ruta</button>
           <span id="drawTools" hidden>
             <button type="button" class="ghost" id="drawAll">Unir los WP en orden</button>
-            <button type="button" class="ghost" id="drawUndo">Deshacer</button>
+            <button type="button" class="ghost" id="drawUndo" title="También con Cmd+Z o la tecla de borrar">↶ Deshacer</button>
             <button type="button" class="hl" id="drawSave">Guardar como track</button>
             <button type="button" class="ghost" id="drawGpx">Exportar GPX</button>
             <button type="button" class="ghost" id="drawCancel">Cancelar</button>
@@ -185,6 +185,15 @@
           </span>
           <span class="hint" id="drawInfo"></span>
           <span class="msg" id="drawMsg"></span>
+        </div>
+        <div class="layersbar">
+          <label>Caminos <select id="lyBase"><option value="osm">OpenStreetMap</option><option value="topo">Topográfico</option><option value="none">Ninguno</option></select></label>
+          <label class="chk"><input type="checkbox" id="lySat" checked> Satélite</label>
+          <label class="op">Opacidad <input type="range" id="lyOp" min="0" max="100" step="5" value="100"> <span id="lyOpTxt">100 %</span></label>
+          <span id="lyFiles"></span>
+          <label class="btn ghost" for="lyFile">Importar mapa sin conexión</label>
+          <input type="file" id="lyFile" accept=".mbtiles,.sqlitedb,.sqlite,.db" multiple class="vh">
+          <span class="msg" id="lyMsg"></span>
         </div>
         <div class="gmap" id="gmap"></div>
         <div class="scale"><span id="scaleTxt"></span><span id="scaleHelp">Toca dos waypoints para ver la distancia</span></div>

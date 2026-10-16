@@ -1,5 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
 import { prepare, analyse, legs as legsOf, cut } from "./analisis.js";
+import { setupLayers, idb } from "./mapas.js";
 
 const CFG = window.APP_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
@@ -132,14 +133,33 @@ function gate(title, text, { login = false, claim = false } = {}) {
 }
 
 async function roleFor() {
-  const { data: role } = await sb.rpc("my_role");
+  const { data: role, error } = await sb.rpc("my_role");
+  if (error && /fetch|network|load failed/i.test(error.message || "")) throw error;
   if (role) return role;
   const { data: owner } = await sb.from("site_owner").select("id").limit(1);
   return owner && owner.length ? null : "unclaimed";
 }
 
+// without internet: show the last copy saved on this device, read only
+let offline = false;
+async function offlineBoot() {
+  offline = true;
+  let snap = null; try { snap = await idb.get("kv", "snap"); } catch (e) {}
+  if (!snap) { gate("Sin conexión", "No hay internet y este dispositivo aún no tiene copia. Abre la web una vez con conexión y quedará guardada."); return; }
+  Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks, routes: snap.routes || [] });
+  $("userbar").hidden = false; $("uName").textContent = snap.email; $("uPhoto").hidden = true;
+  $("gate").hidden = true; $("app").hidden = false;
+  document.body.classList.add("viewer-only-hide"); $("adminPanel").hidden = true;
+  render(); loadMaps();
+  showNotice(`Sin conexión: ves la copia guardada el ${new Date(snap.at).toLocaleString("es")}. Los mapas sin conexión funcionan; para guardar cambios hace falta internet.`);
+}
+window.addEventListener("online", () => { if (offline) location.reload(); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if (!navigator.onLine) offlineBoot();
+
 // boot once per signed-in person (token refreshes fire this too)
 sb.auth.onAuthStateChange((_ev, session) => {
+  if (offline) return;
   const user = session ? session.user : null;
   if ((user && user.id) === bootedFor) return;
   bootedFor = user && user.id;
@@ -154,6 +174,8 @@ async function loadAll() {
     // the routes table arrives with a later update; until it exists the page works without it
     state.routes = ro.error ? [] : ro.data.map(routeIn);
     showNotice(""); render();
+    // last copy kept on this device, to open the page without internet
+    idb.put("kv", { at: Date.now(), email: state.user.email, rallies: state.rallies, wps: state.wps, tracks: state.tracks, routes: state.routes }, "snap").catch(() => {});
   } catch (e) { showNotice("No se pudo leer el registro (" + (e.code || e.message) + ")."); }
 }
 let reloadTimer;
@@ -170,7 +192,8 @@ async function boot(user) {
   $("userbar").hidden = !user;
   if (!user) { gate("Entrar", "Entra con tu correo y tu contraseña.", { login: true }); return; }
   $("uName").textContent = user.email; $("uPhoto").hidden = true;
-  const role = await roleFor();
+  let role;
+  try { role = await roleFor(); } catch (e) { return offlineBoot(); }
   if (role === "unclaimed") { gate("Web nueva", "Nadie administra todavía esta web. Si es tuya, pulsa el botón y serás el administrador.", { claim: true }); return; }
   if (!role) { gate("Sin acceso", `Tu cuenta (${user.email}) no tiene acceso. Pide al administrador que te dé permiso.`); return; }
   state.role = role;
@@ -245,7 +268,8 @@ function renderTable() {
     if (k !== last) {
       last = k;
       const h = document.createElement("tr"); h.className = "stagehead"; const td = document.createElement("td"); td.colSpan = 8;
-      td.textContent = stageLabel(k) + " · " + list.filter((x) => stageKey(x) === k).length + " WP"; h.append(td); tb.append(h);
+      const inSt = list.filter((x) => stageKey(x) === k), pt = sumPts(inSt);
+      td.textContent = stageLabel(k) + " · " + inSt.length + " WP" + (pt ? " · " + pt + " pts" : ""); h.append(td); tb.append(h);
     }
     const tr = document.createElement("tr"); tr.id = "row-" + w.id; tr.className = (state.hi === w.id ? "hi" : "") + (filt.off.has(w.id) ? " off" : "");
     const tdc = document.createElement("td"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.style.width = "auto";
@@ -284,7 +308,8 @@ function renderTable() {
 }
 function renderScope() {
   const n = visibleWps().length, m = mapWps().length;
-  $("exportScope").textContent = n + " waypoints · " + scopeLabel() + (m !== n ? ` · ${m} en el mapa` : "");
+  const pv = sumPts(visibleWps()), pm = sumPts(mapWps());
+  $("exportScope").textContent = n + " waypoints" + (pv ? ` (${pv} pts)` : "") + " · " + scopeLabel() + (m !== n ? ` · ${m} en el mapa` + (pm ? ` (${pm} pts)` : "") : "");
   const sel = $("fStage"), opts = [["all", "Todas"], ...allStages().map((k) => [k, stageLabel(k)])];
   if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i][0])) {
     sel.textContent = ""; opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
@@ -350,12 +375,10 @@ function loadMaps() {
   if (lmap) return;
   if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
-  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
-  L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }).addTo(lmap);
-  L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(lmap);
+  setupLayers(lmap);
   layer = L.layerGroup().addTo(lmap);
   lmap.on("click", (e) => {
-    if (drawing) { drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
+    if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
     if (measure.length) { measure = []; renderMap(); }
   });
   renderMap();
@@ -402,7 +425,7 @@ function renderMap() {
       .bindTooltip(w.pts ? `${w.name} · ${w.pts}` : w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
       .on("click", (e) => {
         L.DomEvent.stopPropagation(e);
-        if (drawing) { drawing.pts.push([w.lat, w.lon]); drawing.wpAt.push(w.id); renderMap(); renderDraw(); return; }
+        if (drawing) { drawStep(); drawing.pts.push([w.lat, w.lon]); drawing.wpAt.push(w.id); renderMap(); renderDraw(); return; }
         if (measure.length === 1 && measure[0] === w.id) measure = [];
         else measure = measure.length === 1 ? [measure[0], w.id] : [w.id];
         state.hi = w.id; renderTable(); renderMap(); const row = $("row-" + w.id); if (row) row.scrollIntoView({ block: "nearest" });
@@ -823,15 +846,22 @@ function renderDraw() {
   $("scaleHelp").textContent = on ? "Toca el mapa para añadir puntos; toca un waypoint para pasar justo por él" : "Toca dos waypoints para ver la distancia";
   const jw = on ? drawnWps() : [];
   $("drawInfo").textContent = on ? `${drawing.pts.length} puntos · ${kmOf([drawing.pts]).toFixed(2)} km · ${jw.length} WP unidos · total ${sumPts(jw)} pts` : "";
-  $("drawSave").disabled = $("drawGpx").disabled = !on || drawing.pts.length < 2; $("drawUndo").disabled = !on || !drawing.pts.length;
+  $("drawSave").disabled = $("drawGpx").disabled = !on || drawing.pts.length < 2; $("drawUndo").disabled = !on || !drawing.hist.length;
 }
 // waypoints joined by the drawn line, once each, in the order they were tapped
 const drawnWps = () => [...new Set(drawing.wpAt.filter(Boolean))].map((id) => state.wps.find((w) => w.id === id)).filter(Boolean);
 $("drawOnly").onchange = () => renderMap();
-$("drawStart").onclick = () => { drawing = { pts: [], wpAt: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
+// every change to the line is kept so "Deshacer" (or Ctrl/Cmd+Z) steps back one at a time
+const drawStep = () => drawing.hist.push([drawing.pts.slice(), drawing.wpAt.slice()]);
+function drawUndo() { if (!drawing || !drawing.hist.length) return; [drawing.pts, drawing.wpAt] = drawing.hist.pop(); renderDraw(); renderMap(); }
+document.addEventListener("keydown", (e) => {
+  if (!drawing || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if ((e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) || e.key === "Backspace") { e.preventDefault(); drawUndo(); }
+});
+$("drawStart").onclick = () => { drawing = { pts: [], wpAt: [], hist: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
 $("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
-$("drawUndo").onclick = () => { drawing.pts.pop(); drawing.wpAt.pop(); renderDraw(); renderMap(); };
-$("drawAll").onclick = () => { const l = mapWps(); drawing.pts = l.map((w) => [w.lat, w.lon]); drawing.wpAt = l.map((w) => w.id); renderDraw(); renderMap(); };
+$("drawUndo").onclick = drawUndo;
+$("drawAll").onclick = () => { drawStep(); const l = mapWps(); drawing.pts = l.map((w) => [w.lat, w.lon]); drawing.wpAt = l.map((w) => w.id); renderDraw(); renderMap(); };
 $("drawSave").onclick = async () => {
   const st = currentStage();
   const name = prompt("Nombre de la ruta:", "Ruta dibujada" + (st ? " · Etapa " + st : ""));
@@ -1003,7 +1033,7 @@ function renderDownloads() {
     b.onclick = () => {
       const [list, trks] = pick();
       download(stageFile(s) + ".gpx", buildGpx(list, rally().year + " " + rally().name + " · " + stageLabel(s), trks), "application/gpx+xml");
-      $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length === total ? list.length : list.length + " de " + total} waypoints en orden` + (trks.length ? ` y ${trks.length === 1 ? "el track «" + trks[0].name + "»" : trks.length + " tracks"}.` : ".");
+      $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length === total ? list.length : list.length + " de " + total} waypoints en orden` + (sumPts(list) ? ` (${sumPts(list)} pts)` : "") + (trks.length ? ` y ${trks.length === 1 ? "el track «" + trks[0].name + "»" : trks.length + " tracks"}.` : ".");
     };
     box.append(b);
   });

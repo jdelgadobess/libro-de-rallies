@@ -1,0 +1,28 @@
+name: Publicar la web
+
+# Each push to main publishes the site, the database rules and the server functions to Firebase.
+# Needs the repository secret FIREBASE_SERVICE_ACCOUNT (JSON key) and the variable FIREBASE_PROJECT_ID.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: publicar
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ vars.FIREBASE_PROJECT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependencias del servidor
+        run: npm ci --omit=dev
+        working-directory: functions
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Publicar en Firebase
+        run: npx --yes firebase-tools@15.32.0 deploy --project "${{ vars.FIREBASE_PROJECT_ID }}" --non-interactive --force

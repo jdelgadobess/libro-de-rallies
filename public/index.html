@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Libro de Rallies</title>
+<meta name="description" content="Pruebas de rally por año y etapa, con sus waypoints leídos del roadbook.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23c1272d'/%3E%3Cpath d='M16 4l3.5 8.5L28 16l-8.5 3.5L16 28l-3.5-8.5L4 16l8.5-3.5z' fill='%23006233'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+</head>
+<body>
+<div class="hero"><div class="in">
+  <div>
+    <h1>Libro de <span>Rallies</span></h1>
+    <p class="sub">Cada año, cada etapa y sus waypoints, leídos de las fotos del roadbook y listos para el GPS, Google Maps y Google Earth.</p>
+  </div>
+  <div style="display:grid;gap:10px;justify-items:end">
+    <div class="userbar" id="userbar" hidden><img id="uPhoto" alt=""><span id="uName"></span><button type="button" id="logout">Salir</button></div>
+    <div class="stats" aria-live="polite">
+      <div><b id="stYears">0</b>años</div>
+      <div><b id="stStages">0</b>etapas</div>
+      <div><b id="stWps">0</b>waypoints</div>
+    </div>
+  </div>
+</div></div>
+<div class="zellige" aria-hidden="true"></div>
+
+<div class="wrap">
+  <p class="notice" id="notice" hidden></p>
+
+  <!-- sign-in / access gate -->
+  <section class="panel gate" id="gate" hidden>
+    <h2 id="gateTitle">Entrar</h2>
+    <p class="hint" id="gateText">Entra con tu cuenta de Google.</p>
+    <div class="btns" style="justify-content:center">
+      <button type="button" class="hl" id="login">Entrar con Google</button>
+      <button type="button" id="claim" hidden>Ser el administrador</button>
+    </div>
+  </section>
+
+  <div class="desk" id="app" hidden>
+    <div class="col">
+      <section class="panel">
+        <h2><span class="n">1</span>Año <small id="rallyName"></small></h2>
+        <div class="chips" id="years"></div>
+        <form id="yearForm" hidden data-edit>
+          <div class="row2">
+            <label>Año <input id="nyYear" type="number" min="1980" max="2100" required></label>
+            <label>Nombre <input id="nyName" type="text" required></label>
+          </div>
+          <div class="btns"><button type="submit">Crear año</button><button type="button" class="ghost" id="nyCancel">Cancelar</button></div>
+        </form>
+        <div class="btns" id="rallyDelBox" hidden data-edit>
+          <button type="button" class="ghost" id="rallyDel">Borrar este año</button>
+          <button type="button" class="warn" id="rallyDelYes" hidden>Sí, borrar el año y todos sus waypoints</button>
+          <button type="button" class="ghost" id="rallyDelNo" hidden>Cancelar</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2><span class="n">2</span>Etapa</h2>
+        <div class="btns" data-edit>
+          <label style="grid-auto-flow:column;align-items:center;gap:10px">Nº de etapa <input class="big" id="stageNo" type="number" min="0" max="30" inputmode="numeric" placeholder="—"></label>
+        </div>
+        <div class="chips" id="stages"></div>
+        <p class="hint" data-edit>Los waypoints nuevos se guardan en esta etapa. Toca una etapa para ver solo esa.</p>
+      </section>
+
+      <section class="panel" data-edit>
+        <h2><span class="n">3</span>Importar fotos</h2>
+        <div class="drop" id="drop">
+          <label class="import" for="photos">Importar fotos del roadbook</label>
+          <input type="file" id="photos" accept="image/*" multiple class="vh">
+          <span>Haz la foto de la página completa. Se leen solos el nº de waypoint, las coordenadas y la página, y salen en una tabla para guardarlos.</span>
+          <div class="thumbs" id="thumbs"></div>
+        </div>
+        <div class="btns">
+          <button type="button" class="ghost" id="readBtn" hidden>Volver a leer</button>
+          <button type="button" class="ghost" id="clearPhotos" hidden>Quitar fotos</button>
+        </div>
+        <p class="msg" id="photoMsg"></p>
+
+        <details id="moreWays">
+          <summary>Otras formas de añadir: a mano o desde un GPX</summary>
+          <form id="wpForm">
+            <input type="hidden" id="wEditing">
+            <div class="row2">
+              <label>Nombre <input id="wName" type="text" placeholder="WP29" required></label>
+              <label>Pág. roadbook <input id="wPage" type="text" placeholder="23"></label>
+            </div>
+            <label>Latitud <input id="wLat" class="coord" type="text" placeholder="30°42.503'N" required autocomplete="off"></label>
+            <label>Longitud <input id="wLon" class="coord" type="text" placeholder="4°28.337'W" required autocomplete="off"></label>
+            <p class="parsed" id="wParsed"></p>
+            <label>Descripción <input id="wDesc" type="text" placeholder="Casilla 112, km 124,71"></label>
+            <div class="btns">
+              <button type="submit" id="wSave">Guardar waypoint</button>
+              <button type="button" class="ghost" id="wCancel" hidden>Cancelar edición</button>
+            </div>
+            <p class="msg" id="wMsg"></p>
+          </form>
+          <div class="drop" style="margin-top:12px">
+            <span>Importar un .gpx a esta etapa</span>
+            <input type="file" id="gpxFile" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+          </div>
+          <p class="msg" id="impMsg"></p>
+        </details>
+      </section>
+
+      <section class="panel" id="adminPanel" hidden>
+        <h2>Acceso <small>Quién puede entrar</small></h2>
+        <ul class="members" id="members"></ul>
+        <form id="memberForm">
+          <div class="row2">
+            <label>Correo de Google <input id="mEmail" type="email" required placeholder="nombre@gmail.com"></label>
+            <label>Permiso
+              <select id="mRole">
+                <option value="viewer">Solo ver</option>
+                <option value="editor">Ver y añadir</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+          </div>
+          <div class="btns"><button type="submit">Dar acceso</button></div>
+          <p class="msg" id="mMsg"></p>
+        </form>
+      </section>
+    </div>
+
+    <div class="col">
+      <div class="review" id="review" hidden>
+        <div class="boxhead"><h2>Waypoints leídos de las fotos <small id="revInfo"></small></h2></div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th></th><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Descripción</th></tr></thead>
+            <tbody id="revBody"></tbody>
+          </table>
+        </div>
+        <div class="foot">
+          <span class="hint">Puedes corregir cualquier casilla. Las coordenadas en rojo no se han leído bien.</span>
+          <div class="btns">
+            <button type="button" class="ghost" id="revCancel">Descartar</button>
+            <button type="button" class="hl" id="revSave">Guardar en la etapa</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mapbox">
+        <div class="boxhead">
+          <h2 id="mapTitle">Mapa</h2>
+          <span class="fmt">Coordenadas
+            <select id="fmt" aria-label="Formato de coordenadas">
+              <option value="dm">GG°MM.mmm'</option>
+              <option value="dms">GG°MM'SS"</option>
+              <option value="dd">Decimal</option>
+            </select>
+          </span>
+        </div>
+        <div class="gmap" id="gmap"></div>
+        <div class="scale"><span id="scaleTxt"></span><span>Toca un punto para verlo en la tabla</span></div>
+      </div>
+
+      <section class="panel">
+        <h2>Google Earth <small>Siempre al día</small></h2>
+        <p class="hint">Añade este enlace una vez en Google Earth Pro (Añadir › Enlace de red). Desde entonces Earth muestra todos los waypoints de todos los años, por carpetas, y se actualiza solo.</p>
+        <div class="feed" id="feedUrl">—</div>
+        <div class="btns">
+          <button type="button" id="feedCopy" disabled>Copiar enlace</button>
+          <button type="button" class="ghost" id="feedMake" hidden>Crear enlace</button>
+          <a class="btn ghost" href="https://www.google.com/earth/about/versions/#earth-pro" target="_blank" rel="noopener">Descargar Google Earth Pro</a>
+        </div>
+        <p class="msg" id="gMsg"></p>
+      </section>
+
+      <div class="tablebox">
+        <div class="scroll">
+          <table>
+            <thead><tr><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Descripción</th><th></th></tr></thead>
+            <tbody id="wpBody"></tbody>
+          </table>
+        </div>
+        <div class="foot">
+          <span class="hint" id="exportScope"></span>
+          <label style="grid-auto-flow:column;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:.82rem" title="Algunos GPS ordenan por nombre y ponen WP10 antes que WP2. Con ceros quedan en orden.">
+            <input type="checkbox" id="padNums" style="width:auto"> Números con ceros (WP027)</label>
+        </div>
+        <div class="foot" style="padding-top:0">
+          <div class="dl-stages" id="dlStages"></div>
+          <button type="button" class="ghost" id="dlKml">Descargar KML</button>
+        </div>
+        <p class="msg" id="expMsg" style="padding:0 12px 10px"></p>
+      </div>
+      <p class="hint">Copia el .gpx al Garmin en la carpeta Garmin/GPX, o ábrelo con DMD2 u OsmAnd desde Compartir.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

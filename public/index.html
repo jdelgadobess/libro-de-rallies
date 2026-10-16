@@ -72,36 +72,49 @@
         <p class="hint" id="stageHint"></p>
       </section>
 
-      <section class="panel" data-edit>
-        <h2><span class="n">3</span>Importar fotos</h2>
-        <div class="drop" id="drop">
+      <section class="panel">
+        <h2><span class="n">3</span>Importar</h2>
+        <p class="hint" data-edit>Fotos, waypoints y tracks van a la etapa del paso 2.</p>
+        <div class="drop" id="drop" data-edit>
           <label class="import" for="photos">Importar fotos del roadbook</label>
           <input type="file" id="photos" accept="image/*" multiple class="vh">
           <span>Haz la foto de la página completa. Se leen solos el nº de waypoint, las coordenadas y la página, y salen en una tabla para guardarlos.</span>
           <div class="thumbs" id="thumbs"></div>
         </div>
-        <div class="btns">
+        <div class="btns" data-edit>
           <button type="button" class="ghost" id="readBtn" hidden>Volver a leer</button>
           <button type="button" class="ghost" id="clearPhotos" hidden>Quitar fotos</button>
         </div>
-        <p class="msg" id="photoMsg"></p>
+        <p class="msg" id="photoMsg" data-edit></p>
 
-        <div class="drop" id="wptDrop" style="margin-top:12px">
+        <div class="drop" id="wptDrop" style="margin-top:12px" data-edit>
           <label class="import wpt" for="gpxFile">Importar waypoints (GPX o KML)</label>
           <input type="file" id="gpxFile" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml" multiple class="vh">
-          <span>Si te dan los waypoints en un archivo. Van a la etapa del paso 2.</span>
+          <span>Si te dan los waypoints en un archivo, con su nº y su puntuación.</span>
         </div>
-        <p class="msg" id="impMsg"></p>
+        <p class="msg" id="impMsg" data-edit></p>
 
-        <div class="drop" id="trkDrop" style="margin-top:12px">
+        <div class="drop" id="trkDrop" style="margin-top:12px" data-edit>
           <label class="import trk" for="trackFile">Importar track (GPX o KML)</label>
           <input type="file" id="trackFile" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml" multiple class="vh">
-          <span>El recorrido de la etapa, cuando ya tienes los waypoints. Va a la etapa del paso 2 y sale en el mapa, en Google Earth y en el GPX.</span>
+          <span>El recorrido de la etapa. Sale en el mapa, en Google Earth y en el GPX.</span>
         </div>
         <ul class="tracks" id="trackList"></ul>
-        <p class="msg" id="trkMsg"></p>
+        <p class="msg" id="trkMsg" data-edit></p>
 
-        <details id="moreWays">
+        <div class="drop" id="osmDrop" style="margin-top:12px">
+          <label class="import map" for="osmFile">Importar mapa de OsmAnd (.sqlitedb)</label>
+          <input type="file" id="osmFile" class="vh mapfile" accept=".sqlitedb,.sqlite,.db">
+          <span>En OsmAnd, con el complemento «Mapas en línea», descarga la zona y copia el archivo .sqlitedb de su carpeta «tiles». Se guarda en este dispositivo y funciona sin internet.</span>
+        </div>
+        <div class="drop" id="tnDrop" style="margin-top:12px">
+          <label class="import map" for="tnFile">Importar mapa de TwoNav (.mbtiles)</label>
+          <input type="file" id="tnFile" class="vh mapfile" accept=".mbtiles,.rmap">
+          <span>Mapas en formato MBTiles. Los .rmap propios de TwoNav no se pueden abrir en el navegador: pásalos antes a MBTiles.</span>
+        </div>
+        <p class="msg" id="mapImpMsg"></p>
+
+        <details id="moreWays" data-edit>
           <summary>Añadir un waypoint a mano</summary>
           <form id="wpForm">
             <input type="hidden" id="wEditing">
@@ -191,32 +204,12 @@
           <label class="chk"><input type="checkbox" id="lySat" checked> Satélite</label>
           <label class="op">Opacidad <input type="range" id="lyOp" min="0" max="100" step="5" value="100"> <span id="lyOpTxt">100 %</span></label>
           <span id="lyFiles"></span>
-          <label class="btn ghost" for="lyFile">Importar mapa sin conexión</label>
-          <input type="file" id="lyFile" accept=".mbtiles,.sqlitedb,.sqlite,.db" multiple class="vh">
           <span class="msg" id="lyMsg"></span>
         </div>
         <div class="gmap" id="gmap"></div>
         <div class="scale"><span id="scaleTxt"></span><span id="scaleHelp">Toca dos waypoints para ver la distancia</span></div>
       </div>
 
-      <section class="panel" id="routesPanel">
-        <h2>Rutas de Wikiloc <small>¿Qué rutas unen los waypoints?</small></h2>
-        <p class="hint">En Wikiloc abre cada ruta que te interese › Descargar › GPX, e impórtalas aquí (puedes elegir varias a la vez; te pregunta a qué etapa van). Se guardan para todos los años. La web mira cuáles pasan cerca de los waypoints marcados en la tabla, en qué orden, y qué ruta une cada tramo.</p>
-        <div class="btns" style="align-items:end">
-          <label class="btn" for="routeFile" data-edit>Importar ruta</label>
-          <input type="file" id="routeFile" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml" multiple class="vh">
-          <a class="btn ghost" href="https://www.wikiloc.com/" target="_blank" rel="noopener">Abrir Wikiloc</a>
-          <label>A menos de <input id="rtRadius" type="number" min="25" step="25" value="300" style="width:80px"> m del WP</label>
-        </div>
-        <p class="msg" id="rtMsg"></p>
-        <ul class="routes" id="rtList"></ul>
-        <div id="rtLegsBox" hidden>
-          <h3 class="sub">Tramo a tramo</h3>
-          <table class="legs"><tbody id="rtLegs"></tbody></table>
-          <div class="btns" data-edit><button type="button" id="rtBuild">Crear traza con los mejores tramos</button></div>
-          <p class="hint">Une los waypoints siguiendo, en cada tramo, la ruta más corta que pasa por los dos. Donde no hay ruta, va en línea recta. Se guarda como track de la etapa y sale en el GPX.</p>
-        </div>
-      </section>
 
       <section class="panel">
         <h2>Google Earth Pro</h2>

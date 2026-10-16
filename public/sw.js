@@ -1,6 +1,6 @@
 // Keeps the page, its libraries and the map tiles already seen, so the program opens without internet.
-const APP = "libro-app-v1", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", MAX_TILES = 4000;
-const SHELL = ["./", "index.html", "app.js", "analisis.js", "mapas.js", "style.css", "config.js"];
+const APP = "libro-app-v2", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", MAX_TILES = 4000;
+const SHELL = ["./", "index.html", "app.js", "mapas.js", "style.css", "config.js"];
 const LIB_HOSTS = ["cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org)$/;
 

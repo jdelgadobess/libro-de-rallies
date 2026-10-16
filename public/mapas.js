@@ -158,9 +158,11 @@ export function setupLayers(lmap) {
     });
     for (const m of maps) if (pref.on.includes(m.id)) { try { await turnOn(m, false); } catch (e) { msg(`${m.name}: ${e.message}`); } }
   }
-  $("lyFile").addEventListener("change", async (e) => {
-    const files = [...e.target.files]; e.target.value = "";
+  const say = (t) => { msg(t); const m = $("mapImpMsg"); if (m) m.textContent = t; };
+  async function importMaps(files) {
+    const msg = say;
     for (const f of files) {
+      if (/\.rmap$/i.test(f.name)) { msg(`${f.name}: los .rmap de TwoNav no se pueden abrir en el navegador; pásalo a MBTiles.`); continue; }
       msg(`Comprobando ${f.name}…`);
       try {
         const SQL = await sqlLib();
@@ -170,9 +172,16 @@ export function setupLayers(lmap) {
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
         if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
         await list(); turnOff(m.id); await turnOn(m, true);
-        msg(`Guardado ${m.name} en este dispositivo: funciona sin internet.` + (pref.sat ? " Apaga el satélite o hazlo transparente para verlo." : ""));
+        msg(`Guardado ${m.name} en este dispositivo: funciona sin internet. Lo encienden y apagan las casillas encima del mapa.` + (pref.sat ? " Apaga el satélite o bájale la opacidad para verlo." : ""));
       } catch (er) { msg(`${f.name}: ${/not a database|malformed/i.test(er.message) ? "no es un archivo de mapa válido" : er.message}`); }
     }
+  }
+  document.querySelectorAll("input.mapfile").forEach((inp) => inp.addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importMaps(f); }));
+  ["osmDrop", "tnDrop"].forEach((id) => {
+    const d = $(id); if (!d) return;
+    d.addEventListener("dragover", (e) => { e.preventDefault(); d.classList.add("over"); });
+    d.addEventListener("dragleave", () => d.classList.remove("over"));
+    d.addEventListener("drop", (e) => { e.preventDefault(); d.classList.remove("over"); importMaps([...e.dataTransfer.files]); });
   });
   apply(); list();
 }

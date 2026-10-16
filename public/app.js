@@ -1,5 +1,4 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
-import { prepare, analyse, legs as legsOf, cut } from "./analisis.js";
 import { setupLayers, idb } from "./mapas.js";
 
 const CFG = window.APP_CONFIG;
@@ -9,7 +8,6 @@ const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
 const rallyIn = (r) => ({ id: r.id, year: r.year, name: r.name, created: r.created_at });
 const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, pts: r.points ?? ptsIn(r.descr || "") ?? null, seq: r.seq, created: r.created_at });
 const trackIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, segs: r.points, wps: r.wps || [], created: r.created_at });
-const routeIn = (r) => ({ id: r.id, name: r.name, rallyId: r.rally_id, stage: r.stage, source: r.source, segs: r.points, created: r.created_at });
 const wpOut = (w) => {
   const o = { rally_id: w.rallyId, stage: w.stage, name: w.name, lat: w.lat, lon: w.lon, page: w.page, descr: w.desc };
   if (w.pts !== undefined) o.points = w.pts || null;
@@ -22,7 +20,7 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ["#c1272d", "#2f4fb5", "#006233", "#e3a21a", "#b5532c", "#1b8a8a", "#7a3b8f", "#d9662b", "#4f7f2a", "#8c1d40"];
-const state = { user: null, role: null, rallies: [], wps: [], tracks: [], routes: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
+const state = { user: null, role: null, rallies: [], wps: [], tracks: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
 let channel = null, bootedFor;
 const canEdit = () => state.role === "admin" || state.role === "editor";
 
@@ -146,7 +144,7 @@ async function offlineBoot() {
   offline = true;
   let snap = null; try { snap = await idb.get("kv", "snap"); } catch (e) {}
   if (!snap) { gate("Sin conexión", "No hay internet y este dispositivo aún no tiene copia. Abre la web una vez con conexión y quedará guardada."); return; }
-  Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks, routes: snap.routes || [] });
+  Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks });
   $("userbar").hidden = false; $("uName").textContent = snap.email; $("uPhoto").hidden = true;
   $("gate").hidden = true; $("app").hidden = false;
   document.body.classList.add("viewer-only-hide"); $("adminPanel").hidden = true;
@@ -168,14 +166,11 @@ sb.auth.onAuthStateChange((_ev, session) => {
 
 async function loadAll() {
   try {
-    const [r, w, t, ro] = await Promise.all([sb.from("rallies").select("*"), sb.from("waypoints").select("*").range(0, 9999), sb.from("tracks").select("*"),
-      sb.from("routes").select("*")]);
+    const [r, w, t] = await Promise.all([sb.from("rallies").select("*"), sb.from("waypoints").select("*").range(0, 9999), sb.from("tracks").select("*")]);
     state.rallies = must(r).map(rallyIn); state.wps = must(w).map(wpIn); state.tracks = must(t).map(trackIn);
-    // the routes table arrives with a later update; until it exists the page works without it
-    state.routes = ro.error ? [] : ro.data.map(routeIn);
     showNotice(""); render();
     // last copy kept on this device, to open the page without internet
-    idb.put("kv", { at: Date.now(), email: state.user.email, rallies: state.rallies, wps: state.wps, tracks: state.tracks, routes: state.routes }, "snap").catch(() => {});
+    idb.put("kv", { at: Date.now(), email: state.user.email, rallies: state.rallies, wps: state.wps, tracks: state.tracks }, "snap").catch(() => {});
   } catch (e) { showNotice("No se pudo leer el registro (" + (e.code || e.message) + ")."); }
 }
 let reloadTimer;
@@ -205,7 +200,6 @@ async function boot(user) {
     .on("postgres_changes", { event: "*", schema: "public", table: "rallies" }, reloadSoon)
     .on("postgres_changes", { event: "*", schema: "public", table: "waypoints" }, reloadSoon)
     .on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, reloadSoon)
-    .on("postgres_changes", { event: "*", schema: "public", table: "routes" }, reloadSoon)
     .subscribe();
   await loadAll();
   if (role === "admin") loadMembers();
@@ -250,7 +244,7 @@ function render() {
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
-  renderTable(); renderTracks(); renderRoutes(); renderMap(); renderReview(); renderDownloads();
+  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads();
 }
 
 function renderTable() {
@@ -274,7 +268,7 @@ function renderTable() {
     const tr = document.createElement("tr"); tr.id = "row-" + w.id; tr.className = (state.hi === w.id ? "hi" : "") + (filt.off.has(w.id) ? " off" : "");
     const tdc = document.createElement("td"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.style.width = "auto";
     cb.checked = !filt.off.has(w.id); cb.setAttribute("aria-label", "Ver " + w.name + " en el mapa");
-    cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); tr.classList.toggle("off", !cb.checked); renderRoutes(); renderMap(); renderDownloads(); renderScope(); };
+    cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); tr.classList.toggle("off", !cb.checked); renderMap(); renderDownloads(); renderScope(); };
     tdc.append(cb); tr.append(tdc);
     [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"]]
       .forEach(([t, cls]) => { const td = document.createElement("td"); td.textContent = t; if (cls) td.className = cls; tr.append(td); });
@@ -337,7 +331,7 @@ function renderPtsFilter() {
   });
 }
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
-const refilter = () => { renderTable(); renderRoutes(); renderMap(); renderDownloads(); };
+const refilter = () => { renderTable(); renderMap(); renderDownloads(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
 $("allStages").onclick = () => pickStage("all");
 // step 2's stage number, its chips and the table's stage filter always show the same stage
@@ -396,13 +390,6 @@ function renderMap() {
     L.polyline(seg, { color: stageColor(stageKey(t)), weight: 3.5, opacity: .95 }).bindTooltip(t.name).addTo(layer);
     seg.forEach((p) => pts.push(p));
   }));
-  state.routes.filter((r) => rt.show.has(r.id)).forEach((r) => r.segs.forEach((seg) => {
-    L.polyline(seg, { color: "#7a3b8f", weight: 3, opacity: .85 }).bindTooltip(r.name).addTo(layer);
-  }));
-  if (rt.leg) {
-    L.polyline(rt.leg, { color: "#000", weight: 9, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(rt.leg, { color: "#f2b53a", weight: 5, opacity: 1, interactive: false }).addTo(layer);
-  }
   if (drawing) {
     L.polyline(drawing.pts, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(drawing.pts, { color: "#ff7a00", weight: 4, opacity: 1, interactive: false }).addTo(layer);
@@ -724,118 +711,6 @@ async function saveTrack(name, segs, msgEl, wps = []) {
     return true;
   } catch (e) { msgEl.textContent = writeErr(e); return false; }
 }
-
-/* ---------- reference routes (Wikiloc): which ones join the waypoints ---------- */
-const MAX_ROUTE_POINTS = 5000;
-const rt = { radius: 300, show: new Set(), leg: null, legIdx: null, cacheKey: "", results: [], legs: [] };
-const prepared = new Map();
-const prep = (r) => { let p = prepared.get(r.id); if (!p || p.route !== r) { p = prepare(r); prepared.set(r.id, p); } return p; };
-$("rtRadius").addEventListener("input", (e) => { const v = parseInt(e.target.value, 10); if (v > 0) { rt.radius = v; renderRoutes(); renderMap(); } });
-$("routeFile").addEventListener("change", async (e) => {
-  const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
-  const msg = $("rtMsg");
-  const ans = prompt(`¿Para qué etapa ${files.length > 1 ? "son estas " + files.length + " rutas" : "es esta ruta"}? Escribe el número:`, currentStage());
-  if (ans === null) return;
-  const st = ans.trim() === "" ? "" : String(parseInt(ans, 10) || ans.trim());
-  if (st) { try { await ensureRally(); } catch (er) { msg.textContent = writeErr(er); return; } }
-  msg.textContent = "Subiendo…";
-  const rows = [], bad = [];
-  for (const f of files) {
-    try {
-      let { name, segs } = parseTrack(await f.text(), f.name);
-      const total = segs.reduce((n, sg) => n + sg.length, 0);
-      if (total > MAX_ROUTE_POINTS) { const k = Math.ceil(total / MAX_ROUTE_POINTS); segs = segs.map((sg) => sg.filter((p, i) => i % k === 0 || i === sg.length - 1)); }
-      rows.push({ name, rally_id: st ? state.rallyId : null, stage: st, source: /wikiloc/i.test(f.name) ? "wikiloc" : "archivo", points: segs, created_by: state.user.email });
-    } catch (er) { bad.push(f.name + ": " + er.message); }
-  }
-  try {
-    if (rows.length) must(await sb.from("routes").insert(rows));
-    await loadAll();
-    if (st && rows.length) pickStage(st);
-    msg.textContent = (rows.length ? `Importada${rows.length > 1 ? "s " + rows.length + " rutas" : " la ruta"}${st ? " para la etapa " + st : ""}.` : "") + (bad.length ? " No se pudo: " + bad.join("; ") : "");
-  } catch (er) { msg.textContent = writeErr(er); }
-});
-function renderRoutes() {
-  const ul = $("rtList"), wps = mapWps(), msg = $("rtMsg");
-  ul.textContent = "";
-  $("rtLegsBox").hidden = true;
-  if (!state.routes.length) { if (!msg.textContent) msg.textContent = "Aún no hay rutas subidas."; return; }
-  if (msg.textContent === "Aún no hay rutas subidas.") msg.textContent = "";
-  const staged = state.stageFilter !== "all";
-  const key = state.routes.map((r) => r.id).join(",") + "|" + wps.map((w) => w.id).join(",") + "|" + rt.radius;
-  if (staged && key !== rt.cacheKey) {
-    rt.cacheKey = key;
-    rt.results = analyse(state.routes.map(prep), wps, rt.radius);
-    rt.legs = legsOf(rt.results, wps);
-    rt.leg = null; rt.legIdx = null;
-  }
-  const rows = staged ? rt.results : state.routes.map((r) => ({ pr: prep(r), covered: null }));
-  rows.forEach((res) => {
-    const r = res.pr.route, li = document.createElement("li");
-    if (staged && !res.covered) li.className = "none";
-    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = rt.show.has(r.id); cb.title = "Ver en el mapa";
-    cb.onchange = () => { if (cb.checked) rt.show.add(r.id); else rt.show.delete(r.id); renderMap(); };
-    const em = document.createElement("span"); em.className = "em";
-    const b = document.createElement("b"); b.textContent = r.name; em.append(b);
-    if (r.stage) { const rr = state.rallies.find((x) => x.id === r.rallyId); em.append(` · Etapa ${r.stage}` + (rr && rr.id !== state.rallyId ? ` (${rr.year})` : "")); }
-    let t = ` · ${(res.pr.length / 1000).toFixed(1)} km`;
-    if (staged) t += res.covered
-      ? ` · pasa por ${res.covered} de ${wps.length} WP, ${res.inOrder} en orden${res.reverse ? " (en sentido contrario)" : ""}, a ${Math.round(res.mean)} m de media`
-      : " · no pasa cerca de estos waypoints";
-    em.append(t);
-    li.append(cb, em);
-    if (canEdit() && staged && res.covered >= 2) {
-      const use = document.createElement("button"); use.type = "button"; use.className = "ghost"; use.textContent = "Usar como track";
-      use.title = "Guarda el trozo de esta ruta entre el primer y el último waypoint por el que pasa";
-      use.onclick = () => {
-        const al = res.hits.filter(Boolean).map((h) => h.along);
-        const from = res.reverse ? Math.max(...al) : Math.min(...al), to = res.reverse ? Math.min(...al) : Math.max(...al);
-        saveTrack(r.name + " (recortada)", [cut(res.pr, from, to)], $("rtMsg"));
-      };
-      li.append(use);
-    }
-    if (canEdit()) {
-      const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
-      del.onclick = async () => {
-        if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
-        try { must(await sb.from("routes").delete().eq("id", r.id)); rt.show.delete(r.id); await loadAll(); } catch (er) { $("rtMsg").textContent = writeErr(er); }
-      };
-      li.append(del);
-    }
-    ul.append(li);
-  });
-  if (!staged) { const li = document.createElement("li"); li.className = "hint"; li.textContent = "Elige una etapa para ver qué rutas unen sus waypoints."; ul.prepend(li); return; }
-  if (wps.length < 2) return;
-  $("rtLegsBox").hidden = false;
-  const tb = $("rtLegs"); tb.textContent = "";
-  rt.legs.forEach((lg, i) => {
-    const tr = document.createElement("tr"); if (rt.legIdx === i) tr.className = "hi";
-    const o = lg.opts[0];
-    const cells = [[`${lg.a.name} → ${lg.b.name}`, "nm"], [fmtKm(distKm(lg.a, lg.b)) + " recto", ""],
-      [o ? `${o.r.pr.route.name}: ${fmtKm(o.km)} por la ruta` + (lg.opts.length > 1 ? ` (y ${lg.opts.length - 1} más)` : "") : "Ninguna ruta pasa por los dos", o ? "" : "no"]];
-    cells.forEach(([txt, cls]) => { const td = document.createElement("td"); td.textContent = txt; if (cls) td.className = cls; tr.append(td); });
-    tr.onclick = () => {
-      rt.legIdx = i;
-      rt.leg = o ? cut(o.r.pr, o.from, o.to) : [[lg.a.lat, lg.a.lon], [lg.b.lat, lg.b.lon]];
-      renderRoutes(); renderMap(); if (lmap) lmap.fitBounds(rt.leg.concat([[lg.a.lat, lg.a.lon], [lg.b.lat, lg.b.lon]]), { padding: [50, 50] });
-    };
-    tb.append(tr);
-  });
-}
-// one trace through every waypoint: along the best route of each leg, straight where there is none
-$("rtBuild").onclick = () => {
-  const pts = [];
-  const add = (p) => { const q = pts[pts.length - 1]; if (!q || q[0] !== p[0] || q[1] !== p[1]) pts.push(p); };
-  rt.legs.forEach((lg) => {
-    add([lg.a.lat, lg.a.lon]);
-    const o = lg.opts[0];
-    if (o) cut(o.r.pr, o.from, o.to).forEach(add);
-    add([lg.b.lat, lg.b.lon]);
-  });
-  if (pts.length < 2) return;
-  const withRoute = rt.legs.filter((lg) => lg.opts.length).length;
-  saveTrack(`Traza con rutas (${withRoute}/${rt.legs.length} tramos) · Etapa ${currentStage() || state.stageFilter}`, [pts], $("rtMsg"));
-};
 
 /* ---------- drawing a route by hand on the map ---------- */
 let drawing = null;

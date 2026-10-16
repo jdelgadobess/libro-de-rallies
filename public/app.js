@@ -147,10 +147,7 @@ async function loadMembers() {
   const { data, error } = await sb.from("members").select("*");
   if (!error) renderMembers(data.map((m) => ({ id: m.email, role: m.role })));
 }
-async function loadFeed() {
-  const { data } = await sb.from("earth_feed").select("token").maybeSingle();
-  renderFeed(data ? data.token : null);
-}
+
 
 async function boot(user) {
   if (channel) { sb.removeChannel(channel); channel = null; }
@@ -172,8 +169,7 @@ async function boot(user) {
     .on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, reloadSoon)
     .subscribe();
   await loadAll();
-  if (role === "admin") { loadMembers(); loadFeed(); }
-  else $("feedUrl").textContent = "El administrador puede crear y compartir este enlace.";
+  if (role === "admin") loadMembers();
   loadMaps();
 }
 
@@ -736,12 +732,15 @@ function renderDownloads() {
     };
     box.append(b);
   });
-  $("dlKml").disabled = !mapWps().length && !visibleTracks().length;
+  const nw = mapWps().length, nt = visibleTracks().length;
+  $("openEarth").disabled = !nw && !nt;
+  $("earthScope").textContent = rally() ? `${nw} waypoint${nw === 1 ? "" : "s"}` + (nt ? ` y ${nt} track${nt === 1 ? "" : "s"}` : "") + " · " + scopeLabel() : "";
   $("dlSel").disabled = !mapWps().length;
 }
-$("dlKml").onclick = () => {
-  const f = state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter);
+$("openEarth").onclick = () => {
+  const f = (state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter)) + "_Earth";
   download(f + ".kml", buildKml(mapWps(), visibleTracks()), "application/vnd.google-earth.kml+xml");
+  $("gMsg").textContent = `Descargado ${f}.kml. Ábrelo desde la barra de descargas y se abre en Google Earth.`;
 };
 $("dlSel").onclick = () => {
   const list = mapWps(), trks = visibleTracks(), f = (state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter)) + "_seleccion";
@@ -751,7 +750,7 @@ $("dlSel").onclick = () => {
 $("padNums").onchange = (e) => { try { localStorage.setItem("rally.pad", e.target.checked ? "1" : "0"); } catch (er) {} };
 $("fmt").onchange = (e) => { state.fmt = e.target.value; try { localStorage.setItem("rally.fmt", state.fmt); } catch (er) {} render(); };
 
-/* ---------- admin: members and Earth feed ---------- */
+/* ---------- admin: members ---------- */
 const ROLES = { viewer: "Solo ver", editor: "Ver y añadir", admin: "Administrador" };
 function renderMembers(list) {
   const ul = $("members"); ul.textContent = "";
@@ -785,16 +784,3 @@ $("memberForm").addEventListener("submit", async (e) => {
     ? `Listo. Pásale a ${email} esta dirección, su correo y la contraseña «${password}». Puede cambiarla al entrar.`
     : `Listo. ${email} ya puede entrar con su contraseña de siempre.`;
 });
-function renderFeed(token) {
-  $("feedMake").hidden = !!token; $("feedCopy").disabled = !token;
-  $("feedUrl").textContent = token ? `${CFG.supabaseUrl}/functions/v1/kml?t=${token}` : "Aún no hay enlace. Créalo con el botón.";
-}
-$("feedMake").onclick = async () => {
-  const token = [...crypto.getRandomValues(new Uint8Array(18))].map((b) => b.toString(16).padStart(2, "0")).join("");
-  const { error } = await sb.from("earth_feed").upsert({ id: true, token });
-  if (error) $("gMsg").textContent = writeErr(error); else loadFeed();
-};
-$("feedCopy").onclick = async () => {
-  try { await navigator.clipboard.writeText($("feedUrl").textContent); $("gMsg").textContent = "Enlace copiado. En Google Earth Pro: Añadir › Enlace de red y pégalo."; }
-  catch (e) { $("gMsg").textContent = "Selecciona el enlace y cópialo."; }
-};

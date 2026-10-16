@@ -45,6 +45,6 @@ Usa tus cuentas personales, no las de la empresa.
 
 El mapa de la web es de satélite y no necesita clave. Cada waypoint tiene sus botones para abrirlo en Google Maps y en Google Earth.
 
-## Google Earth siempre al día
+## Google Earth
 
-En la web, el administrador pulsa **Crear enlace** en el panel de Google Earth. En Google Earth Pro (ordenador): *Añadir* › *Enlace de red* › pega el enlace. Earth muestra todos los años y etapas por carpetas y se actualiza solo. Quien tenga el enlace puede ver los waypoints, así que compártelo solo con quien quieras.
+Marca en la tabla los waypoints que quieras y pulsa **Abrir en Google Earth**. Se descarga un KML con esa selección (y el track, si está a la vista). Con Google Earth Pro instalado se abre al pincharlo en la barra de descargas. En Earth web: *Proyectos › Abrir › Importar archivo KML*.

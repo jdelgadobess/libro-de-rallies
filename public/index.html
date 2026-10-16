@@ -175,15 +175,13 @@
       </div>
 
       <section class="panel">
-        <h2>Google Earth <small>Siempre al día</small></h2>
-        <p class="hint">Añade este enlace una vez en Google Earth Pro (Añadir › Enlace de red). Desde entonces Earth muestra todos los waypoints de todos los años, por carpetas, y se actualiza solo.</p>
-        <div class="feed" id="feedUrl">—</div>
+        <h2>Google Earth</h2>
         <div class="btns">
-          <button type="button" id="feedCopy" disabled>Copiar enlace</button>
-          <button type="button" class="ghost" id="feedMake" hidden>Crear enlace</button>
-          <a class="btn ghost" href="https://www.google.com/earth/about/versions/#earth-pro" target="_blank" rel="noopener">Descargar Google Earth Pro</a>
+          <button type="button" class="hl" id="openEarth">Abrir en Google Earth</button>
         </div>
+        <p class="hint" id="earthScope"></p>
         <p class="msg" id="gMsg"></p>
+        <p class="hint">Se descarga un archivo con los waypoints marcados en la tabla (y el track, si está a la vista). Ábrelo desde la barra de descargas: con <a href="https://www.google.com/earth/about/versions/#earth-pro" target="_blank" rel="noopener">Google Earth Pro</a> instalado se abre solo. En Google Earth web: Proyectos › Abrir › Importar archivo KML.</p>
       </section>
 
       <div class="tablebox">
@@ -213,7 +211,6 @@
         <div class="foot" style="padding-top:0">
           <div class="dl-stages" id="dlStages"></div>
           <button type="button" class="ghost" id="dlSel">GPX de lo marcado</button>
-          <button type="button" class="ghost" id="dlKml">Descargar KML</button>
         </div>
         <p class="msg" id="expMsg" style="padding:0 12px 10px"></p>
       </div>

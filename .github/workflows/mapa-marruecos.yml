@@ -29,15 +29,8 @@ jobs:
           ./pmtiles extract "https://build.protomaps.com/$D.pmtiles" marruecos.pmtiles --bbox=-17.2,20.7,-0.9,36.0 --maxzoom=14 --download-threads=8
           ./pmtiles show marruecos.pmtiles
           ls -la marruecos.pmtiles
-          ./pmtiles extract marruecos.pmtiles muestra.pmtiles --bbox=-4.6,30.5,-4.2,30.8
-          ls -la muestra.pmtiles
       - name: Publicar
         run: |
           gh release delete mapa-marruecos -y --cleanup-tag || true
           gh release create mapa-marruecos marruecos.pmtiles --title "Mapa off-road de Marruecos" \
-            --notes "Datos de OpenStreetMap ($FECHA) vía Protomaps. Descárgalo e impórtalo en el paso 3 del programa: «Importar mapa off-road»."
-      - name: Muestra para pruebas
-        run: |
-          git config user.name "github-actions" && git config user.email "actions@github.com"
-          git checkout --orphan muestra-mapa && git rm -rqf . && cp muestra.pmtiles . && git add muestra.pmtiles
-          git commit -qm "Muestra del mapa" && git push -f origin muestra-mapa
+            --notes "Datos de OpenStreetMap ($FECHA) vía Protomaps. Descárgalo e impórtalo en el paso 3 del programa: «Importar mapa off-road de Marruecos»."

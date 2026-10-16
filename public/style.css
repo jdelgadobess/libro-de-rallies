@@ -214,3 +214,4 @@ td.pts select { width: auto; padding: 2px 4px; font-size: .8rem }
 .layersbar label.btn { padding: 4px 10px; font-size: .8rem; font-weight: 600; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; background: transparent }
 .layersbar label.btn:hover { border-color: var(--blue) }
 label.import.map { background: #5b4a2e; font-size: 1.05rem }
+label.import.map.off { background: #8b4513; font-size: 1.15rem }

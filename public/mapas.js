@@ -1,6 +1,9 @@
 // Map layers: OpenStreetMap roads and tracks underneath, satellite on top (it can be made transparent or switched off),
 // and offline map files (MBTiles, or the .sqlitedb that OsmAnd saves) kept on this device so they work without internet.
 const SQLJS = "https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/";
+const PMTILES_JS = "https://cdn.jsdelivr.net/npm/pmtiles@4.4.1/dist/pmtiles.js";
+const PROTOMAPS_JS = "https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/protomaps-leaflet.js";
+export const OFFROAD_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles";
 const $ = (id) => document.getElementById(id);
 
 /* ---------- IndexedDB: offline maps and the last copy of the data ---------- */
@@ -32,6 +35,67 @@ function sqlLib() {
   });
   return sqlP;
 }
+const scripts = new Map();
+function script(src) {
+  if (!scripts.has(src)) scripts.set(src, new Promise((ok, ko) => {
+    const s = document.createElement("script"); s.src = src; s.onload = ok;
+    s.onerror = () => { scripts.delete(src); ko(new Error("No se pudo cargar el lector de mapas (hace falta internet la primera vez).")); };
+    document.head.append(s);
+  }));
+  return scripts.get(src);
+}
+
+/* ---------- off-road map: OpenStreetMap vector data (the same OsmAnd uses) in a .pmtiles file ---------- */
+// read straight from the file kept on this device, a piece at a time, so a big map never has to fit in memory
+async function openPmtiles(blob, key) {
+  await script(PMTILES_JS);
+  const src = { getKey: () => key, getBytes: async (offset, length) => ({ data: await blob.slice(offset, offset + length).arrayBuffer() }) };
+  const p = new window.pmtiles.PMTiles(src);
+  const h = await p.getHeader();
+  if (h.tileType !== 1) throw new Error("no es un mapa vectorial de Protomaps");
+  return { p, minZoom: h.minZoom, maxZoom: h.maxZoom, bounds: [[h.minLat, h.minLon], [h.maxLat, h.maxLon]] };
+}
+function offroadStyle() {
+  const P = window.protomapsL;
+  const zw = (base, k = 1.35) => (z) => base * Math.pow(k, Math.max(0, z - 12)); // line width grows with zoom
+  const kind = (...ks) => (z, f) => ks.includes(f.props.kind);
+  const detail = (...ks) => (z, f) => ks.includes(f.props.kind_detail);
+  const line = (o) => new P.LineSymbolizer(o), fillS = (c, op = 1) => new P.PolygonSymbolizer({ fill: c, opacity: op });
+  const areas = (rules) => rules.map((r) => r.symbolizer instanceof P.PolygonSymbolizer ? { ...r, filter: ((fl) => (z, f) => f.geomType === 3 && (!fl || fl(z, f)))(r.filter) } : r);
+  const paintRules = [
+    { dataLayer: "earth", symbolizer: fillS("#efe4cf") },
+    { dataLayer: "landcover", symbolizer: fillS("#e8dcc0"), filter: kind("barren", "desert") },
+    { dataLayer: "landcover", symbolizer: fillS("#d9e2bf"), filter: kind("grassland", "scrub", "farmland") },
+    { dataLayer: "landcover", symbolizer: fillS("#c4d6a4"), filter: kind("forest") },
+    { dataLayer: "landuse", symbolizer: fillS("#f4e3b5"), filter: kind("sand", "beach", "desert", "bare_rock", "scree", "barren") },
+    { dataLayer: "landuse", symbolizer: fillS("#dbe6bd"), filter: kind("farmland", "orchard", "meadow", "grassland", "scrub", "grass") },
+    { dataLayer: "landuse", symbolizer: fillS("#c5d9a3"), filter: kind("forest", "wood", "nature_reserve", "national_park", "park") },
+    { dataLayer: "landuse", symbolizer: fillS("#e2d6c3"), filter: kind("residential", "industrial", "commercial", "military", "cemetery", "school", "hospital") },
+    // the water layer mixes areas and lines (rivers, wadis): fill only the areas
+    { dataLayer: "water", symbolizer: fillS("#a9cbe3"), filter: (z, f) => f.geomType === 3 },
+    { dataLayer: "water", symbolizer: line({ color: "#5d9bcf", width: zw(1.1), dash: [5, 3] }), filter: (z, f) => f.geomType === 2 && f.props.intermittent },
+    { dataLayer: "water", symbolizer: line({ color: "#5d9bcf", width: zw(1.1) }), filter: (z, f) => f.geomType === 2 && !f.props.intermittent },
+    { dataLayer: "buildings", symbolizer: fillS("#c9b79c", 0.9) },
+    { dataLayer: "boundaries", symbolizer: line({ color: "#8a6aa8", width: 1.2, dash: [6, 4] }) },
+    // tracks and paths: what matters off-road
+    { dataLayer: "roads", symbolizer: line({ color: "#fff8e8", width: zw(2.6) }), filter: detail("track"), minzoom: 11 },
+    { dataLayer: "roads", symbolizer: line({ color: "#8b4513", width: zw(1.6), dash: [6, 3] }), filter: detail("track"), minzoom: 9 },
+    { dataLayer: "roads", symbolizer: line({ color: "#a0522d", width: zw(1), dash: [2, 3] }), filter: (z, f) => f.props.kind === "path" && f.props.kind_detail !== "track", minzoom: 12 },
+    { dataLayer: "roads", symbolizer: line({ color: "#9b8a6d", width: zw(2.4) }), filter: kind("minor_road", "other"), minzoom: 10 },
+    { dataLayer: "roads", symbolizer: line({ color: "#ffffff", width: zw(1.6) }), filter: kind("minor_road", "other"), minzoom: 10 },
+    { dataLayer: "roads", symbolizer: line({ color: "#a86b1f", width: zw(3.2) }), filter: kind("major_road") },
+    { dataLayer: "roads", symbolizer: line({ color: "#f6c45a", width: zw(2.2) }), filter: kind("major_road") },
+    { dataLayer: "roads", symbolizer: line({ color: "#8c2f1d", width: zw(3.8) }), filter: kind("highway") },
+    { dataLayer: "roads", symbolizer: line({ color: "#e05a3a", width: zw(2.8) }), filter: kind("highway") },
+  ];
+  const names = ["name:es", "name:fr", "name"];
+  const labelRules = [
+    { dataLayer: "places", symbolizer: new P.CenteredTextSymbolizer({ labelProps: names, fill: "#2b1d0e", stroke: "#fff8e8", width: 2.5, font: "600 13px sans-serif" }), filter: kind("locality", "region", "country") },
+    { dataLayer: "water", symbolizer: new P.CenteredTextSymbolizer({ labelProps: names, fill: "#2f6a99", stroke: "#fff", width: 2, font: "italic 11px sans-serif" }), minzoom: 11 },
+  ];
+  return { paintRules: areas(paintRules), labelRules, backgroundColor: "#efe4cf" };
+}
+
 const one = (db, q, p) => { const st = db.prepare(q); st.bind(p || []); const r = st.step() ? st.get() : null; st.free(); return r; };
 function mimeOf(b) {
   if (b[0] === 0x89 && b[1] === 0x50) return "image/png";
@@ -127,9 +191,16 @@ export function setupLayers(lmap) {
   async function turnOn(m, fit) {
     if (open.has(m.id)) return open.get(m.id);
     msg(`Abriendo ${m.name}…`);
-    const SQL = await sqlLib();
-    const src = openTiles(SQL, new Uint8Array(await m.blob.arrayBuffer()));
-    const layer = new OfflineLayer({ src, pane: "offline", minZoom: 0, maxZoom: 19, minNativeZoom: src.minZoom, maxNativeZoom: src.maxZoom, bounds: src.bounds });
+    let src, layer;
+    if (/\.pmtiles$/i.test(m.file || "")) {
+      src = await openPmtiles(m.blob, m.id); await script(PROTOMAPS_JS);
+      layer = window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
+      src.close = () => {};
+    } else {
+      const SQL = await sqlLib();
+      src = openTiles(SQL, new Uint8Array(await m.blob.arrayBuffer()));
+      layer = new OfflineLayer({ src, pane: "offline", minZoom: 0, maxZoom: 19, minNativeZoom: src.minZoom, maxNativeZoom: src.maxZoom, bounds: src.bounds });
+    }
     layer.addTo(lmap); open.set(m.id, { src, layer });
     msg(`${m.name}: zoom ${src.minZoom}–${src.maxZoom}.` + (pref.sat && pref.op > 60 ? " Baja la transparencia del satélite o apágalo para verlo." : ""));
     if (fit) lmap.fitBounds(src.bounds);
@@ -165,9 +236,9 @@ export function setupLayers(lmap) {
       if (/\.rmap$/i.test(f.name)) { msg(`${f.name}: los .rmap de TwoNav no se pueden abrir en el navegador; pásalo a MBTiles.`); continue; }
       msg(`Comprobando ${f.name}…`);
       try {
-        const SQL = await sqlLib();
-        const src = openTiles(SQL, new Uint8Array(await f.arrayBuffer())); src.close();
-        const m = { id: f.name + "|" + f.size, name: f.name.replace(/\.(mbtiles|sqlitedb|sqlite|db)$/i, ""), size: f.size, added: Date.now(), blob: f };
+        if (/\.pmtiles$/i.test(f.name)) await openPmtiles(f, "check");
+        else { const SQL = await sqlLib(); openTiles(SQL, new Uint8Array(await f.arrayBuffer())).close(); }
+        const m = { id: f.name + "|" + f.size, name: f.name.replace(/\.(mbtiles|sqlitedb|sqlite|db|pmtiles)$/i, ""), file: f.name, size: f.size, added: Date.now(), blob: f };
         await idb.put("maps", m);
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
         if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
@@ -177,7 +248,7 @@ export function setupLayers(lmap) {
     }
   }
   document.querySelectorAll("input.mapfile").forEach((inp) => inp.addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importMaps(f); }));
-  ["osmDrop", "tnDrop"].forEach((id) => {
+  ["osmDrop", "tnDrop", "orDrop"].forEach((id) => {
     const d = $(id); if (!d) return;
     d.addEventListener("dragover", (e) => { e.preventDefault(); d.classList.add("over"); });
     d.addEventListener("dragleave", () => d.classList.remove("over"));

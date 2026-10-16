@@ -102,6 +102,11 @@
         <ul class="tracks" id="trackList"></ul>
         <p class="msg" id="trkMsg" data-edit></p>
 
+        <div class="drop" id="orDrop" style="margin-top:12px">
+          <label class="import map off" for="orFile">Importar mapa off-road de Marruecos</label>
+          <input type="file" id="orFile" class="vh mapfile" accept=".pmtiles">
+          <span>Pistas, caminos, senderos, ríos secos y pueblos de OpenStreetMap: los mismos datos que usa OsmAnd. <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles">Descárgalo aquí (270 MB)</a> una vez e impórtalo con el botón. Se guarda en este dispositivo y funciona sin internet.</span>
+        </div>
         <div class="drop" id="osmDrop" style="margin-top:12px">
           <label class="import map" for="osmFile">Importar mapa de OsmAnd (.sqlitedb)</label>
           <input type="file" id="osmFile" class="vh mapfile" accept=".sqlitedb,.sqlite,.db">

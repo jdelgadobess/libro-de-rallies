@@ -1,0 +1,27 @@
+name: Diagnóstico (registros de Supabase)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Últimas llamadas y errores de las funciones
+        run: |
+          end=$(date -u +%Y-%m-%dT%H:%M:%SZ); start=$(date -u -d '-6 hours' +%Y-%m-%dT%H:%M:%SZ)
+          q() {
+            curl -sS -G "https://api.supabase.com/v1/projects/$PROJECT_REF/analytics/endpoints/logs.all" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+              --data-urlencode "sql=$1" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" \
+              | jq -r '.result[]? | [.timestamp, (.[keys_unsorted[1:]|.[]] // "")] | map(tostring) | join(" | ")' || true
+          }
+          echo "== llamadas a funciones =="
+          q "select datetime(timestamp) as t, r.method, r.url, resp.status_code, m.execution_time_ms from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as r cross join unnest(m.response) as resp order by timestamp desc limit 40"
+          echo "== mensajes de las funciones =="
+          q "select datetime(timestamp) as t, event_message, m.level, m.function_id from function_logs cross join unnest(metadata) as m order by timestamp desc limit 60"
+          echo "== secretos definidos (solo nombres) =="
+          curl -sS "https://api.supabase.com/v1/projects/$PROJECT_REF/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.[].name' || true

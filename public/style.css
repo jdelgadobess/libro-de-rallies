@@ -180,3 +180,23 @@ label.import.trk { background: var(--green); font-size: 1.15rem }
 .filters .btns { margin-left: auto }
 tr.off td:not(:first-child) { opacity: .45 }
 button.gm { background: transparent; font-family: inherit; line-height: inherit; text-transform: none; letter-spacing: 0 }
+.drawbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--line) }
+.drawbar #drawTools { display: inline-flex; flex-wrap: wrap; gap: 6px }
+.drawbar #drawTools[hidden] { display: none }
+.gmap.drawing { cursor: crosshair }
+.gmap.drawing .leaflet-interactive { cursor: copy }
+.routes { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none }
+.routes li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 5px 0; font-size: .85rem }
+.routes li .em { flex: 1; min-width: 12em }
+.routes li .em b { font-weight: 600 }
+.routes li.none { opacity: .55 }
+.routes input[type=checkbox] { width: auto }
+.routes button { padding: 3px 8px; font-size: .8rem }
+h3.sub { font-family: var(--display); font-size: 1.05rem; letter-spacing: .04em; text-transform: uppercase; margin: 14px 0 6px }
+table.legs { width: 100%; border-collapse: collapse; font-size: .85rem }
+table.legs td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top }
+table.legs tr { cursor: pointer }
+table.legs tr.hi td { background: color-mix(in srgb, var(--saffron) 25%, transparent) }
+table.legs td.nm { font-weight: 600; white-space: nowrap }
+table.legs .no { color: var(--muted) }
+label.import.wpt { background: var(--blue); font-size: 1.15rem }

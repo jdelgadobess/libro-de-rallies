@@ -87,6 +87,14 @@
         </div>
         <p class="msg" id="photoMsg"></p>
 
+        <div class="drop" id="trkDrop" style="margin-top:12px">
+          <label class="import trk" for="trackFile">Importar track (GPX o KML)</label>
+          <input type="file" id="trackFile" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml" multiple class="vh">
+          <span>El recorrido de la etapa, cuando ya tienes los waypoints. Va a la etapa del paso 2 y sale en el mapa, en Google Earth y en el GPX.</span>
+        </div>
+        <ul class="tracks" id="trackList"></ul>
+        <p class="msg" id="trkMsg"></p>
+
         <details id="moreWays">
           <summary>Otras formas de añadir: a mano o desde un GPX</summary>
           <form id="wpForm">

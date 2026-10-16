@@ -1,6 +1,6 @@
 # Libro de Rallies
 
-Registro de las pruebas de rally por año y etapa. Los waypoints se leen solos de las fotos del roadbook, se ven sobre Google Maps, salen en Google Earth con un enlace que se actualiza solo, y cada etapa se descarga en GPX en el orden del roadbook.
+Registro de las pruebas de rally por año y etapa. Los waypoints se leen solos de las fotos del roadbook, cada etapa puede llevar su track (GPX o KML), todo se ve sobre Google Maps, salen en Google Earth con un enlace que se actualiza solo, y cada etapa se descarga en GPX en el orden del roadbook.
 
 Funciona con **Supabase** (base de datos, acceso con Google y el servidor que lee las fotos) y **Vercel** (la web y tu dominio).
 

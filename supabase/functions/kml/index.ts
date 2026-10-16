@@ -20,20 +20,28 @@ Deno.serve(async (req) => {
   const { data: feed } = await db.from("earth_feed").select("token").maybeSingle();
   if (!token || !feed || feed.token !== token) return new Response("No encontrado", { status: 404 });
 
-  const [{ data: rallies }, { data: wps }] = await Promise.all([
+  const [{ data: rallies }, { data: wps }, { data: trks }] = await Promise.all([
     db.from("rallies").select("id, year, name").order("year", { ascending: false }),
     db.from("waypoints").select("rally_id, stage, name, lat, lon, page, descr, seq"),
+    db.from("tracks").select("rally_id, stage, name, points"),
   ]);
   let styles = "";
-  COLORS.forEach((c, i) => { styles += `<Style id="c${i}"><IconStyle><color>${abgr(c)}</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-blank.png</href></Icon></IconStyle></Style>\n`; });
+  COLORS.forEach((c, i) => { styles += `<Style id="c${i}"><IconStyle><color>${abgr(c)}</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-blank.png</href></Icon></IconStyle><LineStyle><color>${abgr(c)}</color><width>4</width></LineStyle></Style>\n`; });
   let body = "";
   for (const r of rallies ?? []) {
     const mine = (wps ?? []).filter((w) => w.rally_id === r.id);
-    if (!mine.length) continue;
-    const stages = [...new Set(mine.map((w) => w.stage ?? ""))].sort((a, b) => Number(a === "") - Number(b === "") || natural(a, b));
+    const myTrks = (trks ?? []).filter((t) => t.rally_id === r.id);
+    if (!mine.length && !myTrks.length) continue;
+    const stages = [...new Set([...mine, ...myTrks].map((w) => w.stage ?? ""))].sort((a, b) => Number(a === "") - Number(b === "") || natural(a, b));
     body += `<Folder><name>${xe(r.year + " · " + r.name)}</name>\n`;
     stages.forEach((s, si) => {
       body += `<Folder><name>${xe(s ? "Etapa " + s : "Sin etapa")}</name>\n`;
+      myTrks.filter((t) => (t.stage ?? "") === s).forEach((t) => {
+        const segs = t.points as [number, number][][];
+        body += `<Placemark><name>${xe(t.name)}</name><styleUrl>#c${si % COLORS.length}</styleUrl><MultiGeometry>` +
+          segs.map((seg) => `<LineString><tessellate>1</tessellate><coordinates>${seg.map(([la, lo]) => lo.toFixed(6) + "," + la.toFixed(6)).join(" ")}</coordinates></LineString>`).join("") +
+          `</MultiGeometry></Placemark>\n`;
+      });
       mine.filter((w) => (w.stage ?? "") === s)
         .sort((a, b) => orderKey(a.name) - orderKey(b.name) || (a.seq ?? 0) - (b.seq ?? 0))
         .forEach((w) => {

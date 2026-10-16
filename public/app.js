@@ -6,6 +6,7 @@ const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
 // database rows <-> the shape the page works with
 const rallyIn = (r) => ({ id: r.id, year: r.year, name: r.name, created: r.created_at });
 const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, seq: r.seq, created: r.created_at });
+const trackIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, segs: r.points, created: r.created_at });
 const wpOut = (w) => {
   const o = { rally_id: w.rallyId, stage: w.stage, name: w.name, lat: w.lat, lon: w.lon, page: w.page, descr: w.desc };
   if (w.seq !== undefined) o.seq = w.seq;
@@ -17,7 +18,7 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ["#c1272d", "#2f4fb5", "#006233", "#e3a21a", "#b5532c", "#1b8a8a", "#7a3b8f", "#d9662b", "#4f7f2a", "#8c1d40"];
-const state = { user: null, role: null, rallies: [], wps: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
+const state = { user: null, role: null, rallies: [], wps: [], tracks: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
 let channel = null, bootedFor;
 const canEdit = () => state.role === "admin" || state.role === "editor";
 
@@ -60,7 +61,10 @@ const stageKey = (w) => (w.stage === undefined || w.stage === null || w.stage ==
 const stageLabel = (k) => k === "" ? "Sin etapa" : "Etapa " + k;
 const rallyWps = () => state.wps.filter((w) => w.rallyId === state.rallyId && Number.isFinite(w.lat) && Number.isFinite(w.lon));
 const stagesOf = (list) => [...new Set(list.map(stageKey))].sort((a, b) => (a === "") - (b === "") || natural(a, b));
-const stageColor = (s) => PALETTE[(stagesOf(rallyWps()).indexOf(s) + PALETTE.length) % PALETTE.length];
+const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId);
+const allStages = () => stagesOf([...rallyWps(), ...rallyTracks()]);
+const visibleTracks = () => rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter);
+const stageColor = (s) => PALETTE[(allStages().indexOf(s) + PALETTE.length) % PALETTE.length];
 // roadbook order: DSS first, then by the number in the name (WP2 before WP10), ASS last; ties by reading order
 function orderKey(w) {
   const n = String(w.name || "").toUpperCase().trim();
@@ -123,8 +127,8 @@ sb.auth.onAuthStateChange((_ev, session) => {
 
 async function loadAll() {
   try {
-    const [r, w] = await Promise.all([sb.from("rallies").select("*"), sb.from("waypoints").select("*").range(0, 9999)]);
-    state.rallies = must(r).map(rallyIn); state.wps = must(w).map(wpIn); showNotice(""); render();
+    const [r, w, t] = await Promise.all([sb.from("rallies").select("*"), sb.from("waypoints").select("*").range(0, 9999), sb.from("tracks").select("*")]);
+    state.rallies = must(r).map(rallyIn); state.wps = must(w).map(wpIn); state.tracks = must(t).map(trackIn); showNotice(""); render();
   } catch (e) { showNotice("No se pudo leer el registro (" + (e.code || e.message) + ")."); }
 }
 let reloadTimer;
@@ -155,6 +159,7 @@ async function boot(user) {
   channel = sb.channel("libro")
     .on("postgres_changes", { event: "*", schema: "public", table: "rallies" }, reloadSoon)
     .on("postgres_changes", { event: "*", schema: "public", table: "waypoints" }, reloadSoon)
+    .on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, reloadSoon)
     .subscribe();
   await loadAll();
   if (role === "admin") { loadMembers(); loadFeed(); }
@@ -169,7 +174,7 @@ function render() {
   const r = rally();
 
   $("stYears").textContent = new Set(state.rallies.map((x) => x.year)).size;
-  $("stStages").textContent = new Set(state.wps.filter((w) => stageKey(w) !== "").map((w) => w.rallyId + "|" + stageKey(w))).size;
+  $("stStages").textContent = new Set([...state.wps, ...state.tracks].filter((w) => stageKey(w) !== "").map((w) => w.rallyId + "|" + stageKey(w))).size;
   $("stWps").textContent = state.wps.length;
 
   const yc = $("years"); yc.textContent = "";
@@ -190,7 +195,7 @@ function render() {
   $("rallyDelBox").hidden = !r;
 
   const sc = $("stages"); sc.textContent = "";
-  const stList = stagesOf(rallyWps());
+  const stList = allStages();
   if (state.stageFilter !== "all" && !stList.includes(state.stageFilter)) state.stageFilter = "all";
   if (r) [["all", "Todas"], ...stList.map((k) => [k, k === "" ? "Sin etapa" : "E" + k])].forEach(([k, t]) => {
     const b = document.createElement("button"); b.type = "button"; b.className = "chip";
@@ -204,7 +209,7 @@ function render() {
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r; $("gpxFile").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
-  renderTable(); renderMap(); renderReview(); renderDownloads();
+  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads();
 }
 
 function renderTable() {
@@ -261,9 +266,15 @@ function loadMaps() {
 function renderMap() {
   if (!lmap) return;
   layer.clearLayers();
-  const list = visibleWps();
-  $("scaleTxt").textContent = list.length ? "Colores por etapa · vista satélite" : "Sin waypoints en esta selección";
-  if (!list.length) return;
+  const list = visibleWps(), trks = visibleTracks();
+  $("scaleTxt").textContent = list.length || trks.length ? "Colores por etapa · línea continua = track · vista satélite" : "Sin waypoints en esta selección";
+  if (!list.length && !trks.length) return;
+  const pts = list.map((w) => [w.lat, w.lon]);
+  trks.forEach((t) => t.segs.forEach((seg) => {
+    L.polyline(seg, { color: "#000", weight: 6, opacity: .35, interactive: false }).addTo(layer);
+    L.polyline(seg, { color: stageColor(stageKey(t)), weight: 3.5, opacity: .95 }).bindTooltip(t.name).addTo(layer);
+    seg.forEach((p) => pts.push(p));
+  }));
   const groups = {};
   list.forEach((w) => (groups[stageKey(w)] = groups[stageKey(w)] || []).push(w));
   Object.entries(groups).forEach(([s, ws]) => {
@@ -277,11 +288,11 @@ function renderMap() {
       .addTo(layer);
     if (hi) m.bringToFront();
   });
-  const key = state.rallyId + "|" + state.stageFilter + "|" + list.length;
+  const key = state.rallyId + "|" + state.stageFilter + "|" + list.length + "|" + trks.length;
   if (key !== fitKey) {
     fitKey = key;
-    if (list.length === 1) lmap.setView([list[0].lat, list[0].lon], 15);
-    else lmap.fitBounds(list.map((w) => [w.lat, w.lon]), { padding: [40, 40] });
+    if (pts.length === 1) lmap.setView(pts[0], 15);
+    else lmap.fitBounds(pts, { padding: [40, 40] });
   }
 }
 
@@ -314,7 +325,7 @@ $("rallyDelYes").onclick = async () => {
 
 /* ---------- step 2: stage ---------- */
 $("stageNo").addEventListener("change", () => {
-  const s = currentStage(); if (s && stagesOf(rallyWps()).includes(s)) state.stageFilter = s; render();
+  const s = currentStage(); if (s && allStages().includes(s)) state.stageFilter = s; render();
   if (s && state.photos.length && !state.pending && !state.reading) readPhotos();
 });
 
@@ -433,6 +444,81 @@ $("revSave").onclick = async () => {
   $("revSave").disabled = false; render();
 };
 
+/* ---------- step 3b: track ---------- */
+const MAX_TRACK_POINTS = 20000;
+function parseTrack(text, fileName) {
+  const xml = new DOMParser().parseFromString(text, "application/xml");
+  if (xml.getElementsByTagName("parsererror").length) throw new Error("El archivo no se puede leer.");
+  const num = (v) => Math.round(parseFloat(v) * 1e6) / 1e6;
+  const ok = (p) => Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180;
+  let segs = [];
+  [...xml.getElementsByTagName("trkseg")].forEach((sg) => segs.push([...sg.getElementsByTagName("trkpt")].map((p) => [num(p.getAttribute("lat")), num(p.getAttribute("lon"))])));
+  if (!segs.length) [...xml.getElementsByTagName("rte")].forEach((rt) => segs.push([...rt.getElementsByTagName("rtept")].map((p) => [num(p.getAttribute("lat")), num(p.getAttribute("lon"))])));
+  if (!segs.length) [...xml.getElementsByTagName("LineString")].forEach((ls) => {
+    const c = ls.getElementsByTagName("coordinates")[0];
+    if (c) segs.push(c.textContent.trim().split(/\s+/).map((t) => { const [lo, la] = t.split(","); return [num(la), num(lo)]; }));
+  });
+  if (!segs.length) [...xml.getElementsByTagNameNS("*", "Track")].forEach((tr) => segs.push([...tr.getElementsByTagNameNS("*", "coord")].map((c) => { const [lo, la] = c.textContent.trim().split(/\s+/); return [num(la), num(lo)]; })));
+  segs = segs.map((sg) => sg.filter(ok)).filter((sg) => sg.length > 1);
+  if (!segs.length) throw new Error("El archivo no trae ningún track.");
+  const total = segs.reduce((n, sg) => n + sg.length, 0);
+  if (total > MAX_TRACK_POINTS) { // keep every k-th point, always the first and last of each segment
+    const k = Math.ceil(total / MAX_TRACK_POINTS);
+    segs = segs.map((sg) => sg.filter((p, i) => i % k === 0 || i === sg.length - 1));
+  }
+  const nameEl = xml.getElementsByTagName("name")[0];
+  const name = (xml.querySelector("trk > name, Placemark > name, metadata > name, Document > name") || nameEl || {}).textContent;
+  return { name: (name || "").trim() || fileName.replace(/\.[^.]+$/, ""), segs };
+}
+const kmOf = (segs) => {
+  const R = 6371, rad = Math.PI / 180; let d = 0;
+  segs.forEach((sg) => sg.forEach((p, i) => { if (!i) return; const q = sg[i - 1];
+    const a = Math.sin((p[0] - q[0]) * rad / 2) ** 2 + Math.cos(q[0] * rad) * Math.cos(p[0] * rad) * Math.sin((p[1] - q[1]) * rad / 2) ** 2;
+    d += 2 * R * Math.asin(Math.sqrt(a)); }));
+  return d;
+};
+async function importTracks(files) {
+  const msg = $("trkMsg");
+  if (!files.length) return;
+  if (!rally()) { msg.textContent = "Primero crea el año en el paso 1 (botón «Nuevo año»)."; return; }
+  const st = currentStage();
+  if (!st) { msg.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").focus(); return; }
+  msg.textContent = "Importando…";
+  const rows = [], bad = [];
+  for (const f of files) {
+    try { const t = parseTrack(await f.text(), f.name); rows.push({ rally_id: state.rallyId, stage: st, name: t.name, points: t.segs, created_by: state.user.email }); }
+    catch (e) { bad.push(f.name + ": " + e.message); }
+  }
+  try {
+    if (rows.length) must(await sb.from("tracks").insert(rows));
+    state.stageFilter = st; await loadAll();
+    msg.textContent = (rows.length ? `Track guardado en la etapa ${st}: ` + rows.map((r) => `${r.name} (${kmOf(r.points).toFixed(1)} km)`).join(", ") + "." : "") + (bad.length ? " No se pudo: " + bad.join("; ") : "");
+  } catch (e) { msg.textContent = writeErr(e); }
+}
+$("trackFile").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importTracks(f); });
+const tdrop = $("trkDrop");
+tdrop.addEventListener("dragover", (e) => { e.preventDefault(); tdrop.classList.add("over"); });
+tdrop.addEventListener("dragleave", () => tdrop.classList.remove("over"));
+tdrop.addEventListener("drop", (e) => { e.preventDefault(); tdrop.classList.remove("over"); importTracks([...e.dataTransfer.files]); });
+function renderTracks() {
+  const ul = $("trackList"); ul.textContent = "";
+  visibleTracks().sort((a, b) => natural(stageKey(a), stageKey(b)) || natural(a.created, b.created)).forEach((t) => {
+    const li = document.createElement("li");
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = stageColor(stageKey(t));
+    const nm = document.createElement("span"); nm.className = "em"; nm.textContent = `${stageLabel(stageKey(t))} · ${t.name} · ${kmOf(t.segs).toFixed(1)} km`;
+    li.append(sw, nm);
+    if (canEdit()) {
+      const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
+      del.onclick = async () => {
+        if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
+        try { must(await sb.from("tracks").delete().eq("id", t.id)); await loadAll(); } catch (e) { $("trkMsg").textContent = writeErr(e); }
+      };
+      li.append(del);
+    }
+    ul.append(li);
+  });
+}
+
 /* ---------- manual & GPX ---------- */
 function updateParsed() {
   const la = parseCoord($("wLat").value, true), lo = parseCoord($("wLon").value, false), p = $("wParsed");
@@ -498,25 +584,35 @@ $("gpxFile").addEventListener("change", async (e) => {
 /* ---------- export ---------- */
 const xe = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
 const descOf = (w) => [w.page ? "Pág " + w.page : "", w.desc].filter(Boolean).join(" · ");
-function buildGpx(list, title) {
+function buildGpx(list, title, trks = []) {
   const pad = $("padNums").checked;
   const nm = (w) => pad ? String(w.name).replace(/\d+/, (d) => d.padStart(3, "0")) : String(w.name);
   let o = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Libro de Rallies" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${xe(title)}</name></metadata>\n`;
   list.slice().sort(wpOrder).forEach((w) => {
     o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(descOf(w))}</desc>\n    <sym>Flag</sym>\n  </wpt>\n`;
   });
+  trks.forEach((t) => {
+    o += `  <trk>\n    <name>${xe(t.name)}</name>\n`;
+    t.segs.forEach((seg) => { o += `    <trkseg>\n` + seg.map(([la, lo]) => `      <trkpt lat="${la.toFixed(6)}" lon="${lo.toFixed(6)}"/>\n`).join("") + `    </trkseg>\n`; });
+    o += `  </trk>\n`;
+  });
   return o + `</gpx>\n`;
 }
-function buildKml(list) {
+function buildKml(list, trks = []) {
   const r = rally(), groups = {};
-  list.forEach((w) => (groups[stageKey(w)] = groups[stageKey(w)] || []).push(w));
+  [...list, ...trks].forEach((w) => (groups[stageKey(w)] = groups[stageKey(w)] || []).push(w));
   const abgr = (c) => "ff" + c.slice(5, 7) + c.slice(3, 5) + c.slice(1, 3);
   let styles = "", folders = "";
   Object.keys(groups).sort((a, b) => ((a === "") - (b === "")) || natural(a, b)).forEach((s) => {
     const sid = "e" + (s || "x");
     styles += `  <Style id="${sid}"><IconStyle><color>${abgr(stageColor(s))}</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-blank.png</href></Icon></IconStyle></Style>\n`;
     folders += `  <Folder><name>${xe(stageLabel(s))}</name>\n`;
-    groups[s].slice().sort(wpOrder).forEach((w) => {
+    styles += `  <Style id="${sid}t"><LineStyle><color>${abgr(stageColor(s))}</color><width>4</width></LineStyle></Style>\n`;
+    groups[s].filter((x) => x.segs).forEach((t) => {
+      folders += `    <Placemark><name>${xe(t.name)}</name><styleUrl>#${sid}t</styleUrl><MultiGeometry>` +
+        t.segs.map((seg) => `<LineString><tessellate>1</tessellate><coordinates>${seg.map(([la, lo]) => lo.toFixed(6) + "," + la.toFixed(6)).join(" ")}</coordinates></LineString>`).join("") + `</MultiGeometry></Placemark>\n`;
+    });
+    groups[s].filter((x) => !x.segs).sort(wpOrder).forEach((w) => {
       folders += `    <Placemark><name>${xe(w.name)}</name><description>${xe(descOf(w))}</description><styleUrl>#${sid}</styleUrl><Point><coordinates>${w.lon.toFixed(6)},${w.lat.toFixed(6)},0</coordinates></Point></Placemark>\n`;
     });
     folders += `  </Folder>\n`;
@@ -534,22 +630,22 @@ function download(name, text, type) {
 function renderDownloads() {
   const box = $("dlStages"); box.textContent = "";
   const all = rallyWps();
-  stagesOf(all).forEach((s) => {
+  allStages().forEach((s) => {
     const b = document.createElement("button"); b.type = "button";
     b.className = state.stageFilter === "all" || state.stageFilter === s ? "" : "ghost";
     b.textContent = "GPX " + (s === "" ? "sin etapa" : "etapa " + s);
     b.onclick = () => {
-      const list = all.filter((w) => stageKey(w) === s);
-      download(stageFile(s) + ".gpx", buildGpx(list, rally().year + " " + rally().name + " · " + stageLabel(s)), "application/gpx+xml");
-      $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length} waypoints en orden.`;
+      const list = all.filter((w) => stageKey(w) === s), trks = rallyTracks().filter((t) => stageKey(t) === s);
+      download(stageFile(s) + ".gpx", buildGpx(list, rally().year + " " + rally().name + " · " + stageLabel(s), trks), "application/gpx+xml");
+      $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length} waypoints en orden` + (trks.length ? ` y ${trks.length} track${trks.length > 1 ? "s" : ""}.` : ".");
     };
     box.append(b);
   });
-  $("dlKml").disabled = !visibleWps().length;
+  $("dlKml").disabled = !visibleWps().length && !visibleTracks().length;
 }
 $("dlKml").onclick = () => {
   const f = state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter);
-  download(f + ".kml", buildKml(visibleWps()), "application/vnd.google-earth.kml+xml");
+  download(f + ".kml", buildKml(visibleWps(), visibleTracks()), "application/vnd.google-earth.kml+xml");
 };
 $("padNums").onchange = (e) => { try { localStorage.setItem("rally.pad", e.target.checked ? "1" : "0"); } catch (er) {} };
 $("fmt").onchange = (e) => { state.fmt = e.target.value; try { localStorage.setItem("rally.fmt", state.fmt); } catch (er) {} render(); };

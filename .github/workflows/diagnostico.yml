@@ -14,7 +14,7 @@ jobs:
         run: |
           end=$(date -u +%Y-%m-%dT%H:%M:%SZ); start=$(date -u -d '-6 hours' +%Y-%m-%dT%H:%M:%SZ)
           q() {
-            curl -sS -G "https://api.supabase.com/v1/projects/$PROJECT_REF/analytics/endpoints/logs.all" \
+            curl -sS -G "https://api.supabase.com/v1/projects/$PROJECT_REF/analytics/endpoints/logs" \
               -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
               --data-urlencode "sql=$1" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" \
               | head -c 6000; echo
@@ -26,7 +26,7 @@ jobs:
           echo "== mensajes de las funciones =="
           q "select datetime(timestamp) as t, event_message from function_logs order by timestamp desc limit 60"
           echo "== estado de la base de datos =="
-          curl -sS -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
-            -d '{"query":"select (select count(*) from auth.users) users, (select count(*) from auth.users where email_confirmed_at is null) unconfirmed, (select count(*) from public.site_owner) owners, (select count(*) from public.members) members, (select count(*) from public.rallies) rallies, (select count(*) from public.waypoints) waypoints, (select count(*) from public.tracks) tracks, (select string_agg(year::text, \",\") from public.rallies) years"}' | head -c 2000; echo
+          sql="select (select count(*) from auth.users) users, (select count(*) from auth.users where email_confirmed_at is null) unconfirmed, (select count(*) from public.site_owner) owners, (select count(*) from public.members) members, (select count(*) from public.rallies) rallies, (select count(*) from public.waypoints) waypoints, (select count(*) from public.tracks) tracks, (select string_agg(year::text || ' ' || name, '; ') from public.rallies) years"
+          jq -n --arg q "$sql" '{query: $q}' | curl -sS -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d @- | head -c 2000; echo
           echo "== secretos definidos (solo nombres) =="
           curl -sS "https://api.supabase.com/v1/projects/$PROJECT_REF/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.[].name' || true

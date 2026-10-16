@@ -19,6 +19,7 @@ const Waypoint = z.object({
   page: z.string().describe("Número de página del roadbook, o vacío si no se ve"),
   box: z.string().describe("Número de casilla o viñeta, o vacío"),
   km: z.string().describe("Kilómetro parcial de la casilla, o vacío"),
+  puntos: z.string().describe("Puntuación del waypoint si aparece (10, 25, 50, 100…), solo el número, o vacío"),
   note: z.string().describe("Nota breve si la hay (radio de validación, CAP…), o vacío"),
   dudoso: z.boolean().describe("true si algún dígito no se lee con seguridad"),
 });
@@ -27,6 +28,7 @@ const Lectura = z.object({ waypoints: z.array(Waypoint) });
 const PROMPT = `Las imágenes son fotos de páginas completas del roadbook de un rally raid en Marruecos.
 Extrae TODOS los waypoints que tengan coordenadas GPS escritas (WP, WPV, WPM, WPS, WPE, WPC, DSS, ASS, CP…), en el orden en que aparecen en el roadbook.
 Copia las coordenadas EXACTAMENTE como están impresas, con su hemisferio. No calcules, no redondees y no inventes: si un dígito no se lee con seguridad, marca "dudoso": true.
+Copia también el número de cada waypoint tal cual en "name" y su puntuación en "puntos" (por ejemplo "25" si pone 25 pts).
 El número de página suele estar en una esquina de la hoja. Si no hay ningún waypoint con coordenadas, devuelve una lista vacía.`;
 
 const MEDIA = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);

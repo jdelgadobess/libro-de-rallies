@@ -200,3 +200,8 @@ table.legs tr.hi td { background: color-mix(in srgb, var(--saffron) 25%, transpa
 table.legs td.nm { font-weight: 600; white-space: nowrap }
 table.legs .no { color: var(--muted) }
 label.import.wpt { background: var(--blue); font-size: 1.15rem }
+.filters fieldset.pts { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center }
+.filters fieldset.pts legend { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 0; margin-bottom: 4px; float: left; width: 100% }
+.filters fieldset.pts label { display: flex; gap: 4px; align-items: center; text-transform: none; letter-spacing: 0; font-size: .85rem }
+.filters fieldset.pts input { width: auto }
+td.pts select { width: auto; padding: 2px 4px; font-size: .8rem }

@@ -113,6 +113,7 @@
             <label>Longitud <input id="wLon" class="coord" type="text" placeholder="4°28.337'W" required autocomplete="off"></label>
             <p class="parsed" id="wParsed"></p>
             <label>Descripción <input id="wDesc" type="text" placeholder="Casilla 112, km 124,71"></label>
+            <label>Puntos <select id="wPts"><option value="">—</option><option>10</option><option>25</option><option>50</option><option>100</option></select></label>
             <div class="btns">
               <button type="submit" id="wSave">Guardar waypoint</button>
               <button type="button" class="ghost" id="wCancel" hidden>Cancelar edición</button>
@@ -148,7 +149,7 @@
         <div class="boxhead"><h2>Waypoints leídos de las fotos <small id="revInfo"></small></h2></div>
         <div class="scroll">
           <table>
-            <thead><tr><th></th><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Descripción</th></tr></thead>
+            <thead><tr><th></th><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Pts</th><th>Descripción</th></tr></thead>
             <tbody id="revBody"></tbody>
           </table>
         </div>
@@ -178,6 +179,7 @@
             <button type="button" class="ghost" id="drawAll">Unir los WP en orden</button>
             <button type="button" class="ghost" id="drawUndo">Deshacer</button>
             <button type="button" class="hl" id="drawSave">Guardar como track</button>
+            <button type="button" class="ghost" id="drawGpx">Exportar GPX</button>
             <button type="button" class="ghost" id="drawCancel">Cancelar</button>
           </span>
           <span class="hint" id="drawInfo"></span>
@@ -223,6 +225,14 @@
           <label>Buscar <input id="fText" type="search" placeholder="WP27, S rojo, pág 23…" autocomplete="off"></label>
           <label>Del WP <input id="fFrom" type="number" inputmode="numeric" min="0" placeholder="1"></label>
           <label>al <input id="fTo" type="number" inputmode="numeric" min="0" placeholder="99"></label>
+          <fieldset class="pts" id="fPts"><legend>Puntos</legend>
+            <label><input type="checkbox" value="10" checked> 10</label>
+            <label><input type="checkbox" value="25" checked> 25</label>
+            <label><input type="checkbox" value="50" checked> 50</label>
+            <label><input type="checkbox" value="100" checked> 100</label>
+            <label id="fPtsOtros"><input type="checkbox" value="otros" checked> Otros</label>
+            <label><input type="checkbox" value="sin" checked> Sin pts</label>
+          </fieldset>
           <label class="chk"><input type="checkbox" id="fTracks" checked> Ver track</label>
           <div class="btns">
             <button type="button" class="ghost" id="fAll">Todos al mapa</button>
@@ -232,7 +242,7 @@
         </div>
         <div class="scroll">
           <table>
-            <thead><tr><th title="Ver en el mapa">Mapa</th><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Descripción</th><th></th></tr></thead>
+            <thead><tr><th title="Ver en el mapa">Mapa</th><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Pts</th><th>Descripción</th><th></th></tr></thead>
             <tbody id="wpBody"></tbody>
           </table>
         </div>

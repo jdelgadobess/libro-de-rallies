@@ -6,11 +6,12 @@ const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
 
 // database rows <-> the shape the page works with
 const rallyIn = (r) => ({ id: r.id, year: r.year, name: r.name, created: r.created_at });
-const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, seq: r.seq, created: r.created_at });
+const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, pts: r.points ?? null, seq: r.seq, created: r.created_at });
 const trackIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, segs: r.points, created: r.created_at });
 const routeIn = (r) => ({ id: r.id, name: r.name, rallyId: r.rally_id, stage: r.stage, source: r.source, segs: r.points, created: r.created_at });
 const wpOut = (w) => {
   const o = { rally_id: w.rallyId, stage: w.stage, name: w.name, lat: w.lat, lon: w.lon, page: w.page, descr: w.desc };
+  if (w.pts !== undefined) o.points = w.pts || null;
   if (w.seq !== undefined) o.seq = w.seq;
   if (w.source) o.source = w.source;
   if (w.by) o.created_by = w.by;
@@ -74,16 +75,21 @@ function orderKey(w) {
   if (/^(ASS|FIN|LLEGADA|ARRIV)/.test(n)) return 1e9;
   const m = n.match(/\d+/); return m ? parseInt(m[0], 10) : 5e8;
 }
+// score written next to a waypoint: "25 pts", "50pts", "100 puntos", "10 points"
+const PTS = [10, 25, 50, 100];
+const ptsIn = (...texts) => { const m = texts.join(" ").match(/(\d{1,4})\s*(?:pts?|ptos?|puntos?|points?)\b/i); return m ? parseInt(m[1], 10) : null; };
 const seqOf = (w) => typeof w.seq === "number" ? w.seq : Date.parse(w.created || 0) || 0;
 const wpOrder = (a, b) => ((stageKey(a) === "") - (stageKey(b) === "")) || natural(stageKey(a), stageKey(b)) || (orderKey(a) - orderKey(b)) || (seqOf(a) - seqOf(b)) || natural(a.name, b.name);
 // table filters: stage, text, WP number range; the per-row tick decides what goes to the map
-const filt = { text: "", from: null, to: null, tracks: true, off: new Set() };
+const filt = { text: "", from: null, to: null, tracks: true, off: new Set(), pts: new Set(["10", "25", "50", "100", "otros", "sin"]) };
+const ptsKey = (w) => !w.pts ? "sin" : PTS.includes(w.pts) ? String(w.pts) : "otros";
 const textOf = (w) => [w.name, w.page && "pág " + w.page, w.desc].filter(Boolean).join(" ").toLowerCase();
 const visibleWps = () => rallyWps().filter((w) => {
   if (state.stageFilter !== "all" && stageKey(w) !== state.stageFilter) return false;
   const n = orderKey(w);
   if (filt.from !== null && n < filt.from) return false;
   if (filt.to !== null && n > filt.to) return false;
+  if (!filt.pts.has(ptsKey(w))) return false;
   return !filt.text || filt.text.split(",").map((t) => t.trim()).filter(Boolean).some((t) => textOf(w).includes(t));
 }).sort(wpOrder);
 const mapWps = () => visibleWps().filter((w) => !filt.off.has(w.id));
@@ -225,7 +231,7 @@ function renderTable() {
   const tb = $("wpBody"); tb.textContent = "";
   const list = visibleWps();
   if (!list.length) {
-    const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 7; td.className = "hint";
+    const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 8; td.className = "hint";
     const inStage = rallyWps().filter((w) => state.stageFilter === "all" || stageKey(w) === state.stageFilter).length;
     td.textContent = inStage && rally() ? "Ningún waypoint coincide con el filtro." : rally() ? "Aún no hay waypoints " + (state.stageFilter === "all" ? "aquí." : "en la " + stageLabel(state.stageFilter).toLowerCase() + ".") + (canEdit() ? " Importa las fotos del roadbook en el paso 3." : "") : "Todavía no hay ninguna prueba.";
     tr.append(td); tb.append(tr);
@@ -235,7 +241,7 @@ function renderTable() {
     const k = stageKey(w);
     if (k !== last) {
       last = k;
-      const h = document.createElement("tr"); h.className = "stagehead"; const td = document.createElement("td"); td.colSpan = 7;
+      const h = document.createElement("tr"); h.className = "stagehead"; const td = document.createElement("td"); td.colSpan = 8;
       td.textContent = stageLabel(k) + " · " + list.filter((x) => stageKey(x) === k).length + " WP"; h.append(td); tb.append(h);
     }
     const tr = document.createElement("tr"); tr.id = "row-" + w.id; tr.className = (state.hi === w.id ? "hi" : "") + (filt.off.has(w.id) ? " off" : "");
@@ -243,8 +249,22 @@ function renderTable() {
     cb.checked = !filt.off.has(w.id); cb.setAttribute("aria-label", "Ver " + w.name + " en el mapa");
     cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); tr.classList.toggle("off", !cb.checked); renderRoutes(); renderMap(); renderDownloads(); renderScope(); };
     tdc.append(cb); tr.append(tdc);
-    [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"], [w.desc || "", ""]]
+    [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"]]
       .forEach(([t, cls]) => { const td = document.createElement("td"); td.textContent = t; if (cls) td.className = cls; tr.append(td); });
+    const tdp = document.createElement("td"); tdp.className = "c pts";
+    if (canEdit()) {
+      const sel = document.createElement("select"); sel.setAttribute("aria-label", "Puntos de " + w.name);
+      const vals = ["", ...PTS.map(String)]; if (w.pts && !PTS.includes(w.pts)) vals.push(String(w.pts));
+      vals.forEach((v) => { const o = document.createElement("option"); o.value = v; o.textContent = v ? v + " pts" : "—"; sel.append(o); });
+      sel.value = w.pts ? String(w.pts) : "";
+      sel.onchange = async () => {
+        try { must(await sb.from("waypoints").update({ points: sel.value ? parseInt(sel.value, 10) : null }).eq("id", w.id)); w.pts = sel.value ? parseInt(sel.value, 10) : null; refilter(); }
+        catch (er) { $("expMsg").textContent = writeErr(er); }
+      };
+      tdp.append(sel);
+    } else tdp.textContent = w.pts ? w.pts + " pts" : "";
+    tr.append(tdp);
+    { const td = document.createElement("td"); td.textContent = w.desc || ""; tr.append(td); }
     const act = document.createElement("td"); act.className = "act";
     const earthBtn = (w) => { // one waypoint, opened in Google Earth Pro
       const b = document.createElement("button"); b.type = "button"; b.className = "gm"; b.textContent = "Earth";
@@ -265,7 +285,7 @@ function renderTable() {
       act.append(" ", ed, " ", del);
     }
     tr.append(act);
-    tr.onclick = (ev) => { if (ev.target.closest("a,button,input")) return; state.hi = w.id; renderTable(); renderMap(); };
+    tr.onclick = (ev) => { if (ev.target.closest("a,button,input,select")) return; state.hi = w.id; renderTable(); renderMap(); };
     tb.append(tr);
   });
   renderScope();
@@ -278,7 +298,9 @@ function renderScope() {
     sel.textContent = ""; opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
   }
   sel.value = state.stageFilter;
-  $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size;
+  $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size && filt.pts.size === 6;
+  // only offer "other" and "none" when there are such waypoints
+  $("fPtsOtros").hidden = !rallyWps().some((w) => ptsKey(w) === "otros");
 }
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderRoutes(); renderMap(); renderDownloads(); };
@@ -294,10 +316,12 @@ $("fText").addEventListener("input", (e) => { filt.text = e.target.value.trim().
 $("fFrom").addEventListener("input", (e) => { filt.from = numOrNull(e.target.value); refilter(); });
 $("fTo").addEventListener("input", (e) => { filt.to = numOrNull(e.target.value); refilter(); });
 $("fTracks").onchange = (e) => { filt.tracks = e.target.checked; renderMap(); renderDownloads(); };
+document.querySelectorAll("#fPts input").forEach((cb) => cb.onchange = () => { if (cb.checked) filt.pts.add(cb.value); else filt.pts.delete(cb.value); refilter(); });
 $("fAll").onclick = () => { visibleWps().forEach((w) => filt.off.delete(w.id)); refilter(); };
 $("fNone").onclick = () => { visibleWps().forEach((w) => filt.off.add(w.id)); refilter(); };
 $("fClear").onclick = () => {
   Object.assign(filt, { text: "", from: null, to: null }); filt.off.clear();
+  document.querySelectorAll("#fPts input").forEach((cb) => { cb.checked = true; filt.pts.add(cb.value); });
   $("fText").value = ""; $("fFrom").value = ""; $("fTo").value = ""; refilter();
 };
 
@@ -366,7 +390,7 @@ function renderMap() {
   list.forEach((w) => {
     const hi = state.hi === w.id || measure.includes(w.id);
     const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: stageColor(stageKey(w)), fillOpacity: 1 })
-      .bindTooltip(w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
+      .bindTooltip(w.pts ? `${w.name} · ${w.pts}` : w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
       .on("click", (e) => {
         L.DomEvent.stopPropagation(e);
         if (drawing) { drawing.pts.push([w.lat, w.lon]); renderMap(); renderDraw(); return; }
@@ -490,6 +514,7 @@ async function readPhotos() {
       on: true,
       name: String(o.name || "").trim(), latRaw: String(o.lat ?? ""), lonRaw: String(o.lon ?? ""), page: String(o.page || ""),
       desc: [o.box ? "Casilla " + o.box : "", o.km ? "km " + o.km : "", o.note || "", o.dudoso ? "revisar con la foto" : ""].filter(Boolean).join(", "), doubt: !!o.dudoso,
+      pts: parseInt(o.puntos, 10) || ptsIn(o.note || ""),
     }));
     // good readings are saved straight away; only the ones that can't be used wait in the review table
     const isOk = (x) => x.name && parseCoord(x.latRaw, true) !== null && parseCoord(x.lonRaw, false) !== null;
@@ -499,7 +524,9 @@ async function readPhotos() {
       state.pending = bad.length ? bad : null;
       $("photos").value = ""; setPhotos([]);
       const doubts = good.filter((x) => x.doubt).length;
+      const withPts = good.filter((x) => x.pts).length;
       msg.textContent = `Guardados ${res.added} waypoints en la etapa ${currentStage()}` + (res.skipped ? ` (${res.skipped} ya estaban)` : "") + "." +
+        (good.length ? ` ${withPts === good.length ? "Todos con" : withPts + " de " + good.length + " con"} puntuación.` : "") +
         (doubts ? (doubts > 1 ? ` ${doubts} tienen algún dígito dudoso y salen marcados` : " Uno tiene algún dígito dudoso y sale marcado") + " «revisar con la foto» en la tabla." : "") +
         (bad.length ? (bad.length > 1 ? ` ${bad.length} no se leyeron bien` : " Uno no se leyó bien") + ": corrígelo en la tabla de arriba y pulsa Guardar." : "");
     } catch (e) { state.pending = rows; msg.textContent = writeErr(e); }
@@ -516,7 +543,7 @@ async function saveRows(rows) {
   const batch = []; let skipped = 0;
   rows.forEach((x, i) => {
     if (have.has(st + "|" + x.name.trim())) { skipped++; return; }
-    batch.push(wpOut({ rallyId: r.id, stage: st, name: x.name.trim(), lat: parseCoord(x.latRaw, true), lon: parseCoord(x.lonRaw, false), page: x.page.trim(), desc: x.desc.trim(), seq: seqBase + i, source: "foto", by: state.user.email }));
+    batch.push(wpOut({ rallyId: r.id, stage: st, name: x.name.trim(), lat: parseCoord(x.latRaw, true), lon: parseCoord(x.lonRaw, false), page: x.page.trim(), desc: x.desc.trim(), pts: x.pts || null, seq: seqBase + i, source: "foto", by: state.user.email }));
   });
   if (batch.length) must(await sb.from("waypoints").insert(batch));
   state.stageFilter = st; await loadAll();
@@ -537,10 +564,11 @@ function renderReview() {
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = row.on; cb.style.width = "auto"; cb.id = "rv-on-" + i;
     cb.onchange = () => { row.on = cb.checked; };
     const td0 = document.createElement("td"); td0.append(cb); tr.append(td0);
-    [["name", "nm"], ["latRaw", "coord"], ["lonRaw", "coord"], ["page", "sm"], ["desc", ""]].forEach(([f, cls]) => {
-      const td = document.createElement("td"); const inp = document.createElement("input"); inp.value = row[f]; inp.id = "rv-" + f + "-" + i;
+    [["name", "nm"], ["latRaw", "coord"], ["lonRaw", "coord"], ["page", "sm"], ["pts", "sm"], ["desc", ""]].forEach(([f, cls]) => {
+      const td = document.createElement("td"); const inp = document.createElement("input"); inp.value = row[f] ?? ""; inp.id = "rv-" + f + "-" + i;
       if (cls) inp.className = cls;
-      inp.oninput = () => { row[f] = inp.value; if (cls === "coord") { mark(); if (ok()) { row.on = true; cb.checked = true; } } };
+      if (f === "pts") { inp.inputMode = "numeric"; inp.placeholder = "pts"; }
+      inp.oninput = () => { row[f] = f === "pts" ? parseInt(inp.value, 10) || null : inp.value; if (cls === "coord") { mark(); if (ok()) { row.on = true; cb.checked = true; } } };
       td.append(inp); tr.append(td);
     });
     if (row.doubt) { tr.title = "Lectura dudosa: compárala con la foto"; tr.children[2].firstChild.style.borderColor = "var(--saffron)"; tr.children[3].firstChild.style.borderColor = "var(--saffron)"; }
@@ -774,7 +802,7 @@ function renderDraw() {
   $("gmap").classList.toggle("drawing", on);
   $("scaleHelp").textContent = on ? "Toca el mapa para añadir puntos; toca un waypoint para pasar justo por él" : "Toca dos waypoints para ver la distancia";
   $("drawInfo").textContent = on ? `${drawing.pts.length} puntos · ${kmOf([drawing.pts]).toFixed(2)} km` : "";
-  $("drawSave").disabled = !on || drawing.pts.length < 2; $("drawUndo").disabled = !on || !drawing.pts.length;
+  $("drawSave").disabled = $("drawGpx").disabled = !on || drawing.pts.length < 2; $("drawUndo").disabled = !on || !drawing.pts.length;
 }
 $("drawStart").onclick = () => { drawing = { pts: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
 $("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
@@ -787,6 +815,16 @@ $("drawSave").onclick = async () => {
   if (await saveTrack(name.trim() || "Ruta dibujada", [drawing.pts], $("drawMsg"))) { drawing = null; renderDraw(); renderMap(); }
 };
 
+// the drawn line straight to a GPX file (with the waypoints shown on the map), without saving it
+$("drawGpx").onclick = () => {
+  const st = currentStage();
+  const name = prompt("Nombre del track:", "Ruta dibujada" + (st ? " · Etapa " + st : ""));
+  if (name === null) return;
+  const t = { name: name.trim() || "Ruta dibujada", segs: [drawing.pts] }, wps = mapWps();
+  download(slug(t.name) + ".gpx", buildGpx(wps, t.name, [t]), "application/gpx+xml");
+  $("drawMsg").textContent = `Descargado ${slug(t.name)}.gpx: ${kmOf(t.segs).toFixed(1)} km` + (wps.length ? ` y ${wps.length} waypoints.` : ".");
+};
+
 /* ---------- manual & GPX ---------- */
 function updateParsed() {
   const la = parseCoord($("wLat").value, true), lo = parseCoord($("wLon").value, false), p = $("wParsed");
@@ -797,13 +835,13 @@ function updateParsed() {
 $("wLat").addEventListener("input", updateParsed); $("wLon").addEventListener("input", updateParsed);
 function startEdit(w) {
   $("moreWays").open = true; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
-  $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || "";
+  $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || ""; $("wPts").value = w.pts && PTS.includes(w.pts) ? String(w.pts) : "";
   $("wLat").value = fmtCoord(w.lat, true, "dm"); $("wLon").value = fmtCoord(w.lon, false, "dm");
   $("wCancel").hidden = false; $("wSave").textContent = "Guardar cambios"; updateParsed();
   $("wpForm").scrollIntoView({ behavior: "smooth", block: "center" }); $("wName").focus({ preventScroll: true });
 }
 function clearWp() {
-  ["wEditing", "wName", "wPage", "wDesc", "wLat", "wLon"].forEach((i) => $(i).value = "");
+  ["wEditing", "wName", "wPage", "wDesc", "wLat", "wLon", "wPts"].forEach((i) => $(i).value = "");
   $("wCancel").hidden = true; $("wSave").textContent = "Guardar waypoint"; updateParsed();
 }
 $("wCancel").onclick = clearWp;
@@ -812,7 +850,8 @@ $("wpForm").addEventListener("submit", async (e) => {
   const la = parseCoord($("wLat").value, true), lo = parseCoord($("wLon").value, false);
   if (!rally()) { $("wMsg").textContent = "Primero crea o elige el año."; return; }
   if (la === null || lo === null) { $("wMsg").textContent = "Revisa las coordenadas: no las reconozco."; return; }
-  const d = { rallyId: state.rallyId, stage: currentStage(), name: $("wName").value.trim(), page: $("wPage").value.trim(), desc: $("wDesc").value.trim(), lat: la, lon: lo };
+  const d = { rallyId: state.rallyId, stage: currentStage(), name: $("wName").value.trim(), page: $("wPage").value.trim(), desc: $("wDesc").value.trim(), lat: la, lon: lo,
+    pts: $("wPts").value ? parseInt($("wPts").value, 10) : null };
   try {
     const ed = $("wEditing").value;
     if (ed) must(await sb.from("waypoints").update(wpOut(d)).eq("id", ed));
@@ -831,11 +870,12 @@ function parseWaypoints(text) {
   const txtOf = (n, t) => { const el = n.getElementsByTagName(t)[0]; return el ? el.textContent.trim() : ""; };
   let nodes = [...xml.getElementsByTagName("wpt")];
   if (!nodes.length) nodes = [...xml.getElementsByTagName("rtept")];
-  let out = nodes.map((n) => ({ name: txtOf(n, "name"), lat: r6(n.getAttribute("lat")), lon: r6(n.getAttribute("lon")), desc: txtOf(n, "desc") || txtOf(n, "cmt") }));
+  let out = nodes.map((n) => ({ name: txtOf(n, "name"), lat: r6(n.getAttribute("lat")), lon: r6(n.getAttribute("lon")), desc: txtOf(n, "desc") || txtOf(n, "cmt"),
+    extra: [txtOf(n, "cmt"), txtOf(n, "type"), txtOf(n, "sym")].join(" ") }));
   if (!out.length) out = [...xml.getElementsByTagName("Placemark")].map((pm) => {
     const pt = pm.getElementsByTagName("Point")[0]; if (!pt) return null;
     const [lo, la] = txtOf(pt, "coordinates").split(",");
-    return { name: txtOf(pm, "name"), lat: r6(la), lon: r6(lo), desc: txtOf(pm, "description").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() };
+    return { name: txtOf(pm, "name"), lat: r6(la), lon: r6(lo), desc: txtOf(pm, "description").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), extra: "" };
   }).filter(Boolean);
   out = out.filter((w) => Number.isFinite(w.lat) && Number.isFinite(w.lon) && Math.abs(w.lat) <= 90 && Math.abs(w.lon) <= 180);
   if (!out.length) throw new Error("no trae waypoints (solo track)");
@@ -853,16 +893,20 @@ async function importWaypointFiles(files) {
     try {
       parseWaypoints(await f.text()).forEach((w, i) => {
         total++;
-        const name = w.name || "WP" + (i + 1), k = st + "|" + name + "|" + w.lat + "|" + w.lon;
+        // every waypoint keeps a number: names without one get their position in the file
+        const name = /\d/.test(w.name) ? w.name : ("WP" + (i + 1) + (w.name ? " " + w.name : "")), k = st + "|" + name + "|" + w.lat + "|" + w.lon;
         if (have.has(k)) return; have.add(k);
-        rows.push(wpOut({ rallyId: state.rallyId, stage: st, name, lat: w.lat, lon: w.lon, page: "", desc: w.desc, seq: seqBase + rows.length, source: "gpx", by: state.user.email }));
+        rows.push(wpOut({ rallyId: state.rallyId, stage: st, name, lat: w.lat, lon: w.lon, page: "", desc: w.desc, pts: ptsIn(w.name, w.desc, w.extra), seq: seqBase + rows.length, source: "gpx", by: state.user.email }));
       });
     } catch (e) { bad.push(f.name + ": " + e.message); }
   }
   try {
     if (rows.length) must(await sb.from("waypoints").insert(rows));
     state.stageFilter = st; await loadAll();
-    msg.textContent = (total ? `Añadidos ${rows.length} waypoints a la etapa ${st}` + (total > rows.length ? ` (${total - rows.length} ya estaban).` : ".") : "") + (bad.length ? " No se pudo: " + bad.join("; ") : "");
+    const withPts = rows.filter((x) => x.points).length;
+    msg.textContent = (total ? `Añadidos ${rows.length} waypoints a la etapa ${st}` + (total > rows.length ? ` (${total - rows.length} ya estaban).` : ".") +
+      (rows.length ? ` ${withPts === rows.length ? "Todos con" : withPts + " de " + rows.length + " con"} puntuación` + (withPts < rows.length ? "; ponla en la columna Pts." : ".") : "") : "") +
+      (bad.length ? " No se pudo: " + bad.join("; ") : "");
   } catch (err) { msg.textContent = writeErr(err); }
 }
 $("gpxFile").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importWaypointFiles(f); });
@@ -873,7 +917,7 @@ wdrop.addEventListener("drop", (e) => { e.preventDefault(); wdrop.classList.remo
 
 /* ---------- export ---------- */
 const xe = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
-const descOf = (w) => [w.page ? "Pág " + w.page : "", w.desc].filter(Boolean).join(" · ");
+const descOf = (w) => [w.pts ? w.pts + " pts" : "", w.page ? "Pág " + w.page : "", w.desc].filter(Boolean).join(" · ");
 function buildGpx(list, title, trks = []) {
   const pad = $("padNums").checked;
   const nm = (w) => pad ? String(w.name).replace(/\d+/, (d) => d.padStart(3, "0")) : String(w.name);

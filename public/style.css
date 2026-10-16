@@ -170,3 +170,4 @@ label.import.trk { background: var(--green); font-size: 1.15rem }
 .tracks .em { flex: 1; overflow-wrap: anywhere }
 #stageNo.need { outline: 3px solid var(--saffron); outline-offset: 2px; animation: pulse 1s ease-in-out 3 }
 @keyframes pulse { 50% { outline-color: var(--red) } }
+.gmap .leaflet-tooltip.wp-lbl.dist { background: #fff; color: #000; font-size: 12px; padding: 2px 6px; border: 1px solid #000 }

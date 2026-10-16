@@ -252,7 +252,18 @@ function renderTable() {
 }
 
 /* ---------- map (satellite, no key needed) ---------- */
-let lmap = null, layer = null, fitKey = "";
+let lmap = null, layer = null, fitKey = "", measure = [];
+const rad = Math.PI / 180;
+function distKm(a, b) {
+  const h = Math.sin((b.lat - a.lat) * rad / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin((b.lon - a.lon) * rad / 2) ** 2;
+  return 2 * 6371.0088 * Math.asin(Math.sqrt(h));
+}
+function bearing(a, b) { // initial course from a to b, degrees from north
+  const y = Math.sin((b.lon - a.lon) * rad) * Math.cos(b.lat * rad);
+  const x = Math.cos(a.lat * rad) * Math.sin(b.lat * rad) - Math.sin(a.lat * rad) * Math.cos(b.lat * rad) * Math.cos((b.lon - a.lon) * rad);
+  return String(Math.round((Math.atan2(y, x) / rad + 360) % 360) % 360).padStart(3, "0");
+}
+const fmtKm = (d) => d < 1 ? Math.round(d * 1000) + " m" : d.toLocaleString("es", { maximumFractionDigits: 2 }) + " km";
 function loadMaps() {
   if (lmap) return;
   if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
@@ -261,6 +272,7 @@ function loadMaps() {
   L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }).addTo(lmap);
   L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(lmap);
   layer = L.layerGroup().addTo(lmap);
+  lmap.on("click", () => { if (measure.length) { measure = []; renderMap(); } });
   renderMap();
 }
 function renderMap() {
@@ -275,16 +287,27 @@ function renderMap() {
     L.polyline(seg, { color: stageColor(stageKey(t)), weight: 3.5, opacity: .95 }).bindTooltip(t.name).addTo(layer);
     seg.forEach((p) => pts.push(p));
   }));
-  const groups = {};
-  list.forEach((w) => (groups[stageKey(w)] = groups[stageKey(w)] || []).push(w));
-  Object.entries(groups).forEach(([s, ws]) => {
-    if (ws.length > 1) L.polyline(ws.map((w) => [w.lat, w.lon]), { color: stageColor(s), weight: 3, opacity: .9, dashArray: "6 8" }).addTo(layer);
-  });
+  // distance between the two waypoints tapped
+  const [ma, mb] = measure.map((id) => list.find((w) => w.id === id));
+  if (measure.length === 2 && ma && mb) {
+    const d = distKm(ma, mb), cap = bearing(ma, mb);
+    L.polyline([[ma.lat, ma.lon], [mb.lat, mb.lon]], { color: "#000", weight: 6, opacity: .45, interactive: false }).addTo(layer);
+    L.polyline([[ma.lat, ma.lon], [mb.lat, mb.lon]], { color: "#fff", weight: 3, opacity: 1, interactive: false })
+      .bindTooltip(`${fmtKm(d)} · rumbo ${cap}°`, { permanent: true, direction: "center", className: "wp-lbl dist" }).addTo(layer);
+    $("scaleTxt").textContent = `${ma.name} → ${mb.name}: ${fmtKm(d)} en línea recta, rumbo ${cap}°`;
+  } else if (measure.length === 1 && ma) {
+    $("scaleTxt").textContent = `Desde ${ma.name}: toca otro waypoint para ver la distancia`;
+  }
   list.forEach((w) => {
-    const hi = state.hi === w.id;
+    const hi = state.hi === w.id || measure.includes(w.id);
     const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: stageColor(stageKey(w)), fillOpacity: 1 })
       .bindTooltip(w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
-      .on("click", () => { state.hi = w.id; renderTable(); renderMap(); const row = $("row-" + w.id); if (row) row.scrollIntoView({ block: "nearest" }); })
+      .on("click", (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (measure.length === 1 && measure[0] === w.id) measure = [];
+        else measure = measure.length === 1 ? [measure[0], w.id] : [w.id];
+        state.hi = w.id; renderTable(); renderMap(); const row = $("row-" + w.id); if (row) row.scrollIntoView({ block: "nearest" });
+      })
       .addTo(layer);
     if (hi) m.bringToFront();
   });

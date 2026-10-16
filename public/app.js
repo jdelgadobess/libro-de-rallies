@@ -80,8 +80,19 @@ function writeErr(e) {
 }
 
 /* ---------- sign-in and access ---------- */
-$("login").onclick = () => sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } })
-  .then(({ error }) => { if (error) $("gateText").textContent = "No se pudo entrar (" + error.message + ")."; });
+$("login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({ email: $("lEmail").value.trim().toLowerCase(), password: $("lPass").value });
+  if (error) $("gateText").textContent = /invalid/i.test(error.message) ? "Correo o contraseña incorrectos." : "No se pudo entrar (" + error.message + ").";
+  else $("lPass").value = "";
+});
+$("passBtn").onclick = async () => {
+  const p = prompt("Escribe tu nueva contraseña (mínimo 8 caracteres):");
+  if (p == null) return;
+  if (p.length < 8) { alert("Tiene que tener al menos 8 caracteres."); return; }
+  const { error } = await sb.auth.updateUser({ password: p });
+  alert(error ? "No se pudo cambiar (" + error.message + ")." : "Contraseña cambiada.");
+};
 $("logout").onclick = () => sb.auth.signOut();
 $("claim").onclick = async () => {
   const { error } = await sb.from("site_owner").insert({ email: state.user.email });
@@ -131,14 +142,11 @@ async function boot(user) {
   if (channel) { sb.removeChannel(channel); channel = null; }
   state.user = user; state.role = null;
   $("userbar").hidden = !user;
-  if (!user) { gate("Entrar", "Entra con tu cuenta de Google para ver las pruebas.", { login: true }); return; }
-  const meta = user.user_metadata || {};
-  $("uName").textContent = meta.full_name || meta.name || user.email;
-  const photo = meta.avatar_url || meta.picture || "";
-  $("uPhoto").src = photo; $("uPhoto").hidden = !photo;
+  if (!user) { gate("Entrar", "Entra con tu correo y tu contraseña.", { login: true }); return; }
+  $("uName").textContent = user.email; $("uPhoto").hidden = true;
   const role = await roleFor();
   if (role === "unclaimed") { gate("Web nueva", "Nadie administra todavía esta web. Si es tuya, pulsa el botón y serás el administrador.", { claim: true }); return; }
-  if (!role) { gate("Sin acceso", `Tu cuenta (${user.email}) no tiene acceso. Pide al administrador que te añada con este correo.`); return; }
+  if (!role) { gate("Sin acceso", `Tu cuenta (${user.email}) no tiene acceso. Pide al administrador que te dé permiso.`); return; }
   state.role = role;
   $("gate").hidden = true; $("app").hidden = false;
   document.body.classList.toggle("viewer-only-hide", !canEdit());
@@ -238,48 +246,43 @@ function renderTable() {
   $("exportScope").textContent = list.length + " waypoints · " + scopeLabel();
 }
 
-/* ---------- Google Maps ---------- */
-let gmap = null, overlays = [], mapsState = "idle", fitKey = "";
+/* ---------- map (satellite, no key needed) ---------- */
+let lmap = null, layer = null, fitKey = "";
 function loadMaps() {
-  if (mapsState !== "idle") return;
-  if (!CFG.mapsApiKey || CFG.mapsApiKey === "PEGA_AQUI") { mapsState = "nokey"; $("gmap").innerHTML = '<p class="hint" style="padding:16px">Falta la clave de Google Maps en config.js.</p>'; return; }
-  mapsState = "loading";
-  window.__initMap = () => {
-    mapsState = "ready";
-    gmap = new google.maps.Map($("gmap"), { center: { lat: 31.5, lng: -5.5 }, zoom: 6, mapTypeId: "hybrid", streetViewControl: false, fullscreenControl: true, gestureHandling: "greedy" });
-    renderMap();
-  };
-  const s = document.createElement("script");
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(CFG.mapsApiKey)}&callback=__initMap&loading=async&language=es&region=ES`;
-  s.async = true; s.onerror = () => { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar Google Maps. Revisa la clave.</p>'; };
-  document.head.append(s);
+  if (lmap) return;
+  if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
+  lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
+  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+  L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }).addTo(lmap);
+  L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(lmap);
+  layer = L.layerGroup().addTo(lmap);
+  renderMap();
 }
 function renderMap() {
-  if (mapsState !== "ready") return;
-  overlays.forEach((o) => o.setMap(null)); overlays = [];
+  if (!lmap) return;
+  layer.clearLayers();
   const list = visibleWps();
-  $("scaleTxt").textContent = list.length ? "Colores por etapa · satélite de Google" : "Sin waypoints en esta selección";
+  $("scaleTxt").textContent = list.length ? "Colores por etapa · vista satélite" : "Sin waypoints en esta selección";
   if (!list.length) return;
   const groups = {};
   list.forEach((w) => (groups[stageKey(w)] = groups[stageKey(w)] || []).push(w));
   Object.entries(groups).forEach(([s, ws]) => {
-    if (ws.length < 2) return;
-    overlays.push(new google.maps.Polyline({ map: gmap, path: ws.map((w) => ({ lat: w.lat, lng: w.lon })), strokeOpacity: 0,
-      icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: .9, strokeColor: stageColor(s), scale: 3 }, offset: "0", repeat: "14px" }] }));
+    if (ws.length > 1) L.polyline(ws.map((w) => [w.lat, w.lon]), { color: stageColor(s), weight: 3, opacity: .9, dashArray: "6 8" }).addTo(layer);
   });
-  const bounds = new google.maps.LatLngBounds();
   list.forEach((w) => {
     const hi = state.hi === w.id;
-    const m = new google.maps.Marker({
-      map: gmap, position: { lat: w.lat, lng: w.lon }, title: `${stageLabel(stageKey(w))} · ${w.name}`, zIndex: hi ? 999 : 1,
-      icon: { path: google.maps.SymbolPath.CIRCLE, scale: hi ? 10 : 7, fillColor: stageColor(stageKey(w)), fillOpacity: 1, strokeColor: hi ? "#000" : "#fff", strokeWeight: 2, labelOrigin: new google.maps.Point(0, -2.6) },
-      label: { text: w.name, color: "#fff", fontSize: "11px", fontWeight: "600" },
-    });
-    m.addListener("click", () => { state.hi = w.id; renderTable(); renderMap(); const row = $("row-" + w.id); if (row) row.scrollIntoView({ block: "nearest" }); });
-    overlays.push(m); bounds.extend(m.getPosition());
+    const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: stageColor(stageKey(w)), fillOpacity: 1 })
+      .bindTooltip(w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
+      .on("click", () => { state.hi = w.id; renderTable(); renderMap(); const row = $("row-" + w.id); if (row) row.scrollIntoView({ block: "nearest" }); })
+      .addTo(layer);
+    if (hi) m.bringToFront();
   });
   const key = state.rallyId + "|" + state.stageFilter + "|" + list.length;
-  if (key !== fitKey) { fitKey = key; gmap.fitBounds(bounds, 60); if (list.length === 1) gmap.setZoom(15); }
+  if (key !== fitKey) {
+    fitKey = key;
+    if (list.length === 1) lmap.setView([list[0].lat, list[0].lon], 15);
+    else lmap.fitBounds(list.map((w) => [w.lat, w.lon]), { padding: [40, 40] });
+  }
 }
 
 /* ---------- step 1: years ---------- */
@@ -564,11 +567,21 @@ function renderMembers(list) {
     li.append(em, right); ul.append(li);
   });
 }
+$("mGen").onclick = () => {
+  const abc = "abcdefghjkmnpqrstuvwxyz23456789";
+  $("mPass").value = [...crypto.getRandomValues(new Uint8Array(10))].map((b) => abc[b % abc.length]).join("");
+};
 $("memberForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = $("mEmail").value.trim().toLowerCase();
-  try { must(await sb.from("members").upsert({ email, role: $("mRole").value })); loadMembers(); $("mEmail").value = ""; $("mMsg").textContent = `${email} ya puede entrar con su cuenta de Google en esta misma dirección.`; }
-  catch (err) { $("mMsg").textContent = writeErr(err); }
+  const password = $("mPass").value;
+  $("mMsg").textContent = "Guardando…";
+  const { error } = await sb.functions.invoke("acceso", { body: { email, role: $("mRole").value, password } });
+  if (error) { let m = ""; try { m = (await error.context.json()).error; } catch (er) {} $("mMsg").textContent = m || "No se pudo dar acceso."; return; }
+  loadMembers(); $("mEmail").value = ""; $("mPass").value = "";
+  $("mMsg").textContent = password
+    ? `Listo. Pásale a ${email} esta dirección, su correo y la contraseña «${password}». Puede cambiarla al entrar.`
+    : `Listo. ${email} ya puede entrar con su contraseña de siempre.`;
 });
 function renderFeed(token) {
   $("feedMake").hidden = !!token; $("feedCopy").disabled = !token;

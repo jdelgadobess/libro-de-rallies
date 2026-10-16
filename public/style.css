@@ -160,3 +160,6 @@ body { margin: 0 }
 .feed { font-family: var(--mono); font-size: .8rem; background: var(--sheet-solid); border: 1px solid var(--line); padding: 8px; overflow-wrap: anywhere }
 .dl-stages { display: flex; flex-wrap: wrap; gap: 6px }
 .viewer-only-hide [data-edit] { display: none !important }
+.login { display: grid; gap: 10px; width: 100%; max-width: 320px; text-align: left }
+.gmap .leaflet-tooltip.wp-lbl { background: rgba(20, 12, 6, .75); color: #fff; border: 0; box-shadow: none; font: 600 11px var(--mono); padding: 1px 4px }
+.gmap .leaflet-tooltip.wp-lbl::before { display: none }

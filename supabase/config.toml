@@ -6,3 +6,5 @@ verify_jwt = true
 # Google Earth fetches this without signing in; the function checks its own secret token.
 [functions.kml]
 verify_jwt = false
+[functions.acceso]
+verify_jwt = true

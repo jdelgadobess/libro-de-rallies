@@ -8,7 +8,9 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23c1272d'/%3E%3Cpath d='M16 4l3.5 8.5L28 16l-8.5 3.5L16 28l-3.5-8.5L4 16l8.5-3.5z' fill='%23006233'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="config.js"></script>
 </head>
 <body>
@@ -18,7 +20,7 @@
     <p class="sub">Cada año, cada etapa y sus waypoints, leídos de las fotos del roadbook y listos para el GPS, Google Maps y Google Earth.</p>
   </div>
   <div style="display:grid;gap:10px;justify-items:end">
-    <div class="userbar" id="userbar" hidden><img id="uPhoto" alt=""><span id="uName"></span><button type="button" id="logout">Salir</button></div>
+    <div class="userbar" id="userbar" hidden><img id="uPhoto" alt=""><span id="uName"></span><button type="button" id="passBtn">Contraseña</button><button type="button" id="logout">Salir</button></div>
     <div class="stats" aria-live="polite">
       <div><b id="stYears">0</b>años</div>
       <div><b id="stStages">0</b>etapas</div>
@@ -34,11 +36,13 @@
   <!-- sign-in / access gate -->
   <section class="panel gate" id="gate" hidden>
     <h2 id="gateTitle">Entrar</h2>
-    <p class="hint" id="gateText">Entra con tu cuenta de Google.</p>
-    <div class="btns" style="justify-content:center">
-      <button type="button" class="hl" id="login">Entrar con Google</button>
-      <button type="button" id="claim" hidden>Ser el administrador</button>
-    </div>
+    <p class="hint" id="gateText">Entra con tu correo y tu contraseña.</p>
+    <form id="login" class="login">
+      <label>Correo <input id="lEmail" type="email" autocomplete="username" required></label>
+      <label>Contraseña <input id="lPass" type="password" autocomplete="current-password" required></label>
+      <button type="submit" class="hl">Entrar</button>
+    </form>
+    <div class="btns" style="justify-content:center"><button type="button" id="claim" hidden>Ser el administrador</button></div>
   </section>
 
   <div class="desk" id="app" hidden>
@@ -114,7 +118,7 @@
         <ul class="members" id="members"></ul>
         <form id="memberForm">
           <div class="row2">
-            <label>Correo de Google <input id="mEmail" type="email" required placeholder="nombre@gmail.com"></label>
+            <label>Correo <input id="mEmail" type="email" required placeholder="nombre@gmail.com"></label>
             <label>Permiso
               <select id="mRole">
                 <option value="viewer">Solo ver</option>
@@ -123,7 +127,8 @@
               </select>
             </label>
           </div>
-          <div class="btns"><button type="submit">Dar acceso</button></div>
+          <label>Contraseña para esa persona <input id="mPass" minlength="8" autocomplete="off" placeholder="Déjala vacía si ya tiene cuenta"></label>
+          <div class="btns"><button type="button" class="ghost" id="mGen">Inventar contraseña</button><button type="submit">Dar acceso</button></div>
           <p class="msg" id="mMsg"></p>
         </form>
       </section>

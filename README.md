@@ -17,9 +17,10 @@ Funciona con **Supabase** (base de datos, acceso con Google y el servidor que le
 
 ## Quién entra
 
-- La primera persona que entra con Google en la web recién publicada puede pulsar **Ser el administrador**. Desde ese momento nadie más puede.
-- El administrador da acceso desde el panel **Acceso**, con el correo de Google de cada persona y uno de estos permisos: *Solo ver*, *Ver y añadir* o *Administrador*.
-- Quien no esté en la lista ve «Sin acceso».
+- Cada persona entra con su correo y una contraseña. No se envía ningún correo.
+- Tu cuenta la creas tú en Supabase (paso 2). La primera vez que entras en la web pulsas **Ser el administrador** y desde ese momento nadie más puede.
+- Para dar acceso a alguien: panel **Acceso** › su correo, el permiso (*Solo ver*, *Ver y añadir* o *Administrador*) y una contraseña (el botón *Inventar contraseña* te da una). Le pasas la dirección, su correo y la contraseña. Cada uno puede cambiarla con el botón **Contraseña** de arriba.
+- Si alguien olvida la contraseña, vuelve a darle acceso con una nueva.
 
 ## Puesta en marcha (una sola vez)
 
@@ -28,24 +29,21 @@ Usa tus cuentas personales, no las de la empresa.
 1. **Proyecto de Supabase.** En <https://supabase.com/dashboard> › *New project* (por ejemplo `libro-de-rallies`, región *Central EU (Frankfurt)*). Apunta la contraseña de la base de datos.
    - En *Project Settings* › *API* copia la **Project URL** y la clave **anon / publishable**.
    - El *Reference ID* es la parte de la URL antes de `.supabase.co`.
-2. **Entrar con Google.**
-   - En <https://console.cloud.google.com> crea un proyecto › *APIs y servicios* › *Pantalla de consentimiento de OAuth* (tipo *Externo*, rellena nombre y correo, y publícala).
-   - *Credenciales* › *Crear credenciales* › *ID de cliente de OAuth* › *Aplicación web*. En *URI de redireccionamiento autorizados* pega `https://TU_REF.supabase.co/auth/v1/callback`.
-   - En Supabase › *Authentication* › *Sign In / Providers* › **Google**: actívalo y pega el *Client ID* y el *Client Secret*.
-   - En Supabase › *Authentication* › *URL Configuration*: *Site URL* = tu dominio (por ejemplo `https://rallies.tudominio.com`) y en *Redirect URLs* añade también la dirección `https://….vercel.app`.
-3. **Clave de Google Maps.** En el mismo proyecto de Google Cloud › *APIs y servicios* › habilita **Maps JavaScript API** › *Credenciales* › *Crear clave de API*. Restríngela a *Sitios web* con tu dominio y `*.vercel.app`.
-4. **Clave de Claude** (para leer las fotos). En <https://console.anthropic.com> › *API Keys* › crea una. Guárdala en Supabase › *Edge Functions* › *Secrets* con el nombre `ANTHROPIC_API_KEY`. No la pegues en ningún otro sitio.
-5. **Subir la base de datos y las funciones** (automático desde GitHub).
+2. **Tu cuenta.** En Supabase › *Authentication* › *Users* › *Add user* › *Create new user*: tu correo, una contraseña y marca *Auto Confirm User*.
+   - En *Authentication* › *Sign In / Providers* desactiva *Allow new users to sign up*, para que solo entre quien tú des de alta.
+3. **Clave de Claude** (para leer las fotos). En <https://console.anthropic.com> › *API Keys* › crea una. Guárdala en Supabase › *Edge Functions* › *Secrets* con el nombre `ANTHROPIC_API_KEY`. No la pegues en ningún otro sitio.
+4. **Subir la base de datos y las funciones** (automático desde GitHub).
    - En Supabase › tu avatar › *Account* › *Access Tokens* › crea un token.
    - En GitHub › este repositorio › *Settings* › *Secrets and variables* › *Actions*:
      - secreto `SUPABASE_ACCESS_TOKEN` = el token;
      - secreto `SUPABASE_DB_PASSWORD` = la contraseña de la base de datos;
      - pestaña *Variables*: `SUPABASE_PROJECT_REF` = el Reference ID.
    - En *Actions* › *Subir base de datos y funciones a Supabase* › *Run workflow*.
-   - Sin GitHub Actions también vale: pega el archivo de `supabase/migrations/` en Supabase › *SQL Editor* › *Run*, y sube las funciones con `npx supabase functions deploy --project-ref TU_REF`.
-6. **Rellenar `public/config.js`** con la URL, la clave anon y la clave de Maps (o pásaselas a Claude y lo hace él). No son secretas.
-7. **Publicar en Vercel.** <https://vercel.com/new> › importa este repositorio › *Framework Preset: Other* › *Deploy*. Cada cambio en GitHub se publica solo.
-8. **Dominio propio.** En Vercel › el proyecto › *Settings* › *Domains* › añade tu dominio y copia los registros DNS en la web donde lo compraste. Después ponlo como *Site URL* en Supabase (paso 2) y en la restricción de la clave de Maps (paso 3).
+5. **Rellenar `public/config.js`** con la URL y la clave anon (o pásaselas a Claude y lo hace él). No son secretas.
+6. **Publicar en Vercel.** <https://vercel.com/new> › importa este repositorio › *Framework Preset: Other* › *Deploy*. Cada cambio en GitHub se publica solo.
+7. **Dominio propio.** En Vercel › el proyecto › *Settings* › *Domains* › añade tu dominio y copia los registros DNS en la web donde lo compraste.
+
+El mapa de la web es de satélite y no necesita clave. Cada waypoint tiene sus botones para abrirlo en Google Maps y en Google Earth.
 
 ## Google Earth siempre al día
 

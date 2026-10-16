@@ -72,10 +72,13 @@ const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id ===
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
 const stageColor = (s) => PALETTE[(allStages().indexOf(s) + PALETTE.length) % PALETTE.length];
 // roadbook order: DSS first, then by the number in the name (WP2 before WP10), ASS last; ties by reading order
+// start and finish of the stage, by name ("DSS", "SALIDA") or by description ("ST6 SALIDA", "ST LLEGADA")
+const isStart = (w) => /^(DSS|START|SALIDA|DEPART)/i.test(String(w.name || "").trim()) || /\b(DSS|SALIDA|START|D[EÉ]PART)\b/i.test(w.desc || "");
+const isFinish = (w) => /^(ASS|FIN|LLEGADA|ARRIV)/i.test(String(w.name || "").trim()) || /\b(ASS|LLEGADA|FINISH|ARRIV[EÉ]E?)\b/i.test(w.desc || "");
 function orderKey(w) {
   const n = String(w.name || "").toUpperCase().trim();
-  if (/^(DSS|START|SALIDA|DEPART)/.test(n)) return -1;
-  if (/^(ASS|FIN|LLEGADA|ARRIV)/.test(n)) return 1e9;
+  if (isStart(w)) return -1;
+  if (isFinish(w)) return 1e9;
   const m = n.match(/\d+/); return m ? parseInt(m[0], 10) : 5e8;
 }
 // score written next to a waypoint: "25 pts", "50pts", "100 puntos", "10 points"
@@ -765,7 +768,11 @@ function renderPlan() {
   });
 }
 $("pRun").onclick = async () => {
-  const msg = $("pMsg"), wps = mapWps(), share = Math.min(100, Math.max(10, parseInt($("pPct").value, 10) || 70)) / 100;
+  const msg = $("pMsg"), share = Math.min(100, Math.max(10, parseInt($("pPct").value, 10) || 70)) / 100;
+  // the route always starts at the stage's start and ends at its finish, even if they are unticked in the table
+  const inStage = rallyWps().filter((w) => stageKey(w) === state.stageFilter);
+  const st = inStage.filter(isStart).sort(wpOrder)[0], fin = inStage.filter(isFinish).sort(wpOrder).pop();
+  const wps = [...new Set([st, ...mapWps().filter((w) => w !== st && w !== fin), fin].filter(Boolean))];
   if (state.stageFilter === "all" || wps.length < 3) return;
   plan.busy = true; plan.alts = []; plan.sel = null; renderPlan(); renderMap();
   try {
@@ -804,7 +811,7 @@ $("pRun").onclick = async () => {
     });
     plan.alts = alts.map((a, i) => ({ ...a, color: PLAN_COLORS[i % PLAN_COLORS.length] })); plan.sel = 0;
     const far = sn.filter((s) => s.d > 1000).length;
-    msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
+    msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints, de ${st ? st.name + (st.desc ? " (" + st.desc + ")" : "") : wps[0].name + " (no encuentro la SALIDA)"} a ${fin ? fin.name + (fin.desc ? " (" + fin.desc + ")" : "") : wps[wps.length - 1].name + " (no encuentro la LLEGADA)"}.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
     renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
   } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); }
   finally { plan.busy = false; renderPlan(); }

@@ -202,7 +202,7 @@ function render() {
   });
 
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
-  $("photos").disabled = !r; $("wSave").disabled = !r; $("gpxFile").disabled = !r;
+  $("wSave").disabled = !r; $("gpxFile").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
   renderTable(); renderMap(); renderReview(); renderDownloads();
 }
@@ -320,11 +320,14 @@ $("stageNo").addEventListener("change", () => {
 
 /* ---------- step 3: photos ---------- */
 function setPhotos(files) {
-  state.photos = [...files].filter((f) => /^image\//.test(f.type));
+  const all = [...files];
+  if (all.length && !rally()) { $("photos").value = ""; $("photoMsg").textContent = "Primero crea el año en el paso 1 (botón «Nuevo año») y luego importa las fotos."; return; }
+  state.photos = all.filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
   const t = $("thumbs"); t.querySelectorAll("img").forEach((i) => URL.revokeObjectURL(i.src)); t.textContent = "";
   state.photos.forEach((f) => { const i = document.createElement("img"); i.src = URL.createObjectURL(f); i.alt = f.name; t.append(i); });
   $("clearPhotos").hidden = !state.photos.length; $("readBtn").hidden = true;
   $("photoMsg").textContent = state.photos.length ? state.photos.length + " foto(s) cargadas." + (currentStage() ? "" : " Pon el nº de etapa en el paso 2 y se leen solas.") : "";
+  if (all.length && !state.photos.length) $("photoMsg").textContent = "Eso no parece una foto. Usa JPG, PNG o HEIC.";
   render();
   if (state.photos.length && currentStage()) readPhotos();
 }
@@ -337,7 +340,9 @@ drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove
 
 // phone photos are large; send a 2000px JPEG, plenty to read the coordinates
 async function toJpeg(file, max = 2000) {
-  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch (e) { throw new Error(`Este navegador no puede abrir «${file.name}». Si es HEIC del iPhone, ábrela en Safari o pásala a JPG.`); }
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);

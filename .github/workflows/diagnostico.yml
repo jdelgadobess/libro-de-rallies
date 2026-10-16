@@ -17,7 +17,7 @@ jobs:
             curl -sS -G "https://api.supabase.com/v1/projects/$PROJECT_REF/analytics/endpoints/logs.all" \
               -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
               --data-urlencode "sql=$1" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" \
-              | jq -c '.error // empty, (.result[]? )' || true
+              | head -c 6000; echo
           }
           echo "== peticiones a la web de datos =="
           q "select datetime(timestamp) as t, r.method, r.path, resp.status_code from edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as r cross join unnest(m.response) as resp where r.path not like '%realtime%' order by timestamp desc limit 60"
@@ -25,5 +25,8 @@ jobs:
           q "select datetime(timestamp) as t, event_message, resp.status_code, m.execution_time_ms from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as resp order by timestamp desc limit 40"
           echo "== mensajes de las funciones =="
           q "select datetime(timestamp) as t, event_message from function_logs order by timestamp desc limit 60"
+          echo "== estado de la base de datos =="
+          curl -sS -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+            -d '{"query":"select (select count(*) from auth.users) users, (select count(*) from auth.users where email_confirmed_at is null) unconfirmed, (select count(*) from public.site_owner) owners, (select count(*) from public.members) members, (select count(*) from public.rallies) rallies, (select count(*) from public.waypoints) waypoints, (select count(*) from public.tracks) tracks, (select string_agg(year::text, \",\") from public.rallies) years"}' | head -c 2000; echo
           echo "== secretos definidos (solo nombres) =="
           curl -sS "https://api.supabase.com/v1/projects/$PROJECT_REF/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.[].name' || true

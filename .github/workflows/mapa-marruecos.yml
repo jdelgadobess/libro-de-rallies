@@ -1,0 +1,43 @@
+name: Mapa off-road de Marruecos
+
+# Builds marruecos.pmtiles from the latest OpenStreetMap build of Protomaps (the same data OsmAnd uses)
+# and publishes it as a release, so it can be downloaded once and imported in the program.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramienta pmtiles
+        run: |
+          gh release download -R protomaps/go-pmtiles --pattern '*Linux_x86_64.tar.gz' -O pmtiles.tgz
+          tar xzf pmtiles.tgz pmtiles && ./pmtiles version
+      - name: Recortar Marruecos
+        run: |
+          for d in 0 1 2 3 4 5 6 7 8 9 10; do
+            D=$(date -u -d "$d days ago" +%Y%m%d)
+            if curl -sfI "https://build.protomaps.com/$D.pmtiles" >/dev/null; then break; fi
+          done
+          echo "Usando $D"; echo "FECHA=$D" >> $GITHUB_ENV
+          ./pmtiles extract "https://build.protomaps.com/$D.pmtiles" marruecos.pmtiles --bbox=-17.2,20.7,-0.9,36.0 --maxzoom=14 --download-threads=8
+          ./pmtiles show marruecos.pmtiles
+          ls -la marruecos.pmtiles
+          ./pmtiles extract marruecos.pmtiles muestra.pmtiles --bbox=-4.6,30.5,-4.2,30.8
+          ls -la muestra.pmtiles
+      - name: Publicar
+        run: |
+          gh release delete mapa-marruecos -y --cleanup-tag || true
+          gh release create mapa-marruecos marruecos.pmtiles --title "Mapa off-road de Marruecos" \
+            --notes "Datos de OpenStreetMap ($FECHA) vía Protomaps. Descárgalo e impórtalo en el paso 3 del programa: «Importar mapa off-road»."
+      - name: Muestra para pruebas
+        run: |
+          git config user.name "github-actions" && git config user.email "actions@github.com"
+          git checkout --orphan muestra-mapa && git rm -rqf . && cp muestra.pmtiles . && git add muestra.pmtiles
+          git commit -qm "Muestra del mapa" && git push -f origin muestra-mapa

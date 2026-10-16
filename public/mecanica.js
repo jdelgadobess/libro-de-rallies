@@ -3,19 +3,6 @@
 import { idb } from "./mapas.js";
 const $ = (id) => document.getElementById(id);
 
-// suggestions found on YouTube; anyone with edit rights can add more
-const SUGGESTED = [
-  { topic: "Bomba auxiliar de gasolina", title: "Fiat Panda 4x4 965cc: de bomba de gasolina mecánica a eléctrica", lang: "it", yt: "SjIQ-gRZx_Y" },
-  { topic: "Bomba auxiliar de gasolina", title: "Tutorial bomba de gasolina Fiat Panda 900, 1000 y 1100", lang: "it", yt: "1LUxsJdsd9c" },
-  { topic: "Bomba auxiliar de gasolina", title: "Relé de la bomba de combustible de la Panda", lang: "it", yt: "D1DE0mRe71E" },
-  { topic: "Bomba auxiliar de gasolina", title: "Cómo instalar una bomba eléctrica en serie en un coche de carburador", lang: "es", yt: "67BTxRSmgzI" },
-  { topic: "Bomba auxiliar de gasolina", title: "Instalación de una bomba de gasolina universal Airtex", lang: "es", yt: "DMny0myBQOA" },
-  { topic: "Alternador", title: "Sustitución del alternador en Fiat", lang: "it", yt: "92DigGR3I0s" },
-  { topic: "Alternador", title: "Mantenimiento y montaje del alternador de la Fiat Panda 4x4 Trekking", lang: "it", yt: "1Lb3Gpdqd3s" },
-  { topic: "Alternador", title: "Alternador Fiat, Lancia, Alfa Romeo: desmontaje fácil", lang: "it", yt: "6aNGrrVZqCw" },
-  { topic: "Alternador", title: "La batería no carga: reparación del alternador de la Fiat Panda 169", lang: "it", yt: "CMNIL6jXzy8" },
-];
-const LANG = { it: "Italiano", es: "Español" };
 export const ytId = (u) => {
   const m = String(u).match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([\w-]{11})/);
   return m ? m[1] : null;
@@ -28,8 +15,7 @@ export function setupMecanica({ sb, canEdit, user, writeErr }) {
 
   async function load() {
     const { data, error } = await sb.from("videos").select("*");
-    // the table arrives with a later update; until then only the suggestions show
-    shared = error ? [] : data.map((v) => ({ id: v.id, topic: v.topic, title: v.title, yt: ytId(v.url), url: v.url, by: v.created_by }));
+    shared = error ? [] : data.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map((v) => ({ id: v.id, topic: v.topic, title: v.title, yt: ytId(v.url), url: v.url, by: v.created_by }));
     try { own = await idb.all("videos"); } catch (e) { own = []; }
     loaded = true; render();
   }
@@ -56,13 +42,13 @@ export function setupMecanica({ sb, canEdit, user, writeErr }) {
     }
     const t = document.createElement("div"); t.className = "vt"; t.textContent = v.title;
     const meta = document.createElement("div"); meta.className = "vm";
-    meta.textContent = v.blob ? `En este dispositivo · ${(v.size / 1048576).toFixed(0)} MB · funciona sin internet` : (LANG[v.lang] || "YouTube") + " · necesita internet";
+    meta.textContent = v.blob ? `En este dispositivo · ${(v.size / 1048576).toFixed(0)} MB · funciona sin internet` : "YouTube · necesita internet";
     const btns = document.createElement("div"); btns.className = "btns";
     if (v.yt) {
       const a = document.createElement("a"); a.className = "btn ghost"; a.href = "https://www.youtube.com/watch?v=" + v.yt; a.target = "_blank"; a.rel = "noopener";
       a.textContent = "Abrir en YouTube"; btns.append(a);
     }
-    if ((v.blob) || (v.by !== undefined && canEdit())) {
+    if (v.blob || canEdit()) {
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Quitar";
       del.onclick = async () => {
         if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
@@ -80,9 +66,10 @@ export function setupMecanica({ sb, canEdit, user, writeErr }) {
 
   function render() {
     if (!loaded) return;
-    const all = [...SUGGESTED, ...shared.filter((v) => v.yt), ...own];
+    const all = [...shared.filter((v) => v.yt), ...own];
     const topics = [...new Set(all.map((v) => v.topic))];
     const box = $("mecTopics"); box.textContent = "";
+    if (!all.length) box.textContent = "No hay vídeos. Añade uno abajo.";
     topics.forEach((tp) => {
       const sec = document.createElement("section"); sec.className = "topic";
       const h = document.createElement("h3"); h.textContent = tp;

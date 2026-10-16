@@ -113,7 +113,7 @@
             <label>Longitud <input id="wLon" class="coord" type="text" placeholder="4°28.337'W" required autocomplete="off"></label>
             <p class="parsed" id="wParsed"></p>
             <label>Descripción <input id="wDesc" type="text" placeholder="Casilla 112, km 124,71"></label>
-            <label>Puntos <select id="wPts"><option value="">—</option><option>10</option><option>25</option><option>50</option><option>100</option></select></label>
+            <label>Puntos <input id="wPts" type="number" inputmode="numeric" min="1" placeholder="25"></label>
             <div class="btns">
               <button type="submit" id="wSave">Guardar waypoint</button>
               <button type="button" class="ghost" id="wCancel" hidden>Cancelar edición</button>
@@ -227,12 +227,6 @@
           <label>Del WP <input id="fFrom" type="number" inputmode="numeric" min="0" placeholder="1"></label>
           <label>al <input id="fTo" type="number" inputmode="numeric" min="0" placeholder="99"></label>
           <fieldset class="pts" id="fPts"><legend>Puntos</legend>
-            <label><input type="checkbox" value="10" checked> 10</label>
-            <label><input type="checkbox" value="25" checked> 25</label>
-            <label><input type="checkbox" value="50" checked> 50</label>
-            <label><input type="checkbox" value="100" checked> 100</label>
-            <label id="fPtsOtros"><input type="checkbox" value="otros" checked> Otros</label>
-            <label><input type="checkbox" value="sin" checked> Sin pts</label>
           </fieldset>
           <label class="chk"><input type="checkbox" id="fTracks" checked> Ver track</label>
           <div class="btns">

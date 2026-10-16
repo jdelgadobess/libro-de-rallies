@@ -6,7 +6,7 @@ const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
 
 // database rows <-> the shape the page works with
 const rallyIn = (r) => ({ id: r.id, year: r.year, name: r.name, created: r.created_at });
-const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, pts: r.points ?? null, seq: r.seq, created: r.created_at });
+const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, pts: r.points ?? ptsIn(r.descr || "") ?? null, seq: r.seq, created: r.created_at });
 const trackIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, segs: r.points, wps: r.wps || [], created: r.created_at });
 const routeIn = (r) => ({ id: r.id, name: r.name, rallyId: r.rally_id, stage: r.stage, source: r.source, segs: r.points, created: r.created_at });
 const wpOut = (w) => {
@@ -79,13 +79,12 @@ function orderKey(w) {
   const m = n.match(/\d+/); return m ? parseInt(m[0], 10) : 5e8;
 }
 // score written next to a waypoint: "25 pts", "50pts", "100 puntos", "10 points"
-const PTS = [10, 25, 50, 100];
 const ptsIn = (...texts) => { const m = texts.join(" ").match(/(\d{1,4})\s*(?:pts?|ptos?|puntos?|points?)\b/i); return m ? parseInt(m[1], 10) : null; };
 const seqOf = (w) => typeof w.seq === "number" ? w.seq : Date.parse(w.created || 0) || 0;
 const wpOrder = (a, b) => ((stageKey(a) === "") - (stageKey(b) === "")) || natural(stageKey(a), stageKey(b)) || (orderKey(a) - orderKey(b)) || (seqOf(a) - seqOf(b)) || natural(a.name, b.name);
 // table filters: stage, text, WP number range; the per-row tick decides what goes to the map
-const filt = { text: "", from: null, to: null, tracks: true, only: null, off: new Set(), pts: new Set(["10", "25", "50", "100", "otros", "sin"]) };
-const ptsKey = (w) => !w.pts ? "sin" : PTS.includes(w.pts) ? String(w.pts) : "otros";
+const filt = { text: "", from: null, to: null, tracks: true, only: null, off: new Set(), ptsOff: new Set() };
+const ptsKey = (w) => w.pts ? String(w.pts) : "sin";
 const textOf = (w) => [w.name, w.page && "pág " + w.page, w.desc].filter(Boolean).join(" ").toLowerCase();
 const visibleWps = () => rallyWps().filter((w) => {
   if (filt.only) { const t = state.tracks.find((x) => x.id === filt.only); return !!t && t.wps.includes(w.id); }
@@ -93,7 +92,7 @@ const visibleWps = () => rallyWps().filter((w) => {
   const n = orderKey(w);
   if (filt.from !== null && n < filt.from) return false;
   if (filt.to !== null && n > filt.to) return false;
-  if (!filt.pts.has(ptsKey(w))) return false;
+  if (filt.ptsOff.has(ptsKey(w))) return false;
   return !filt.text || filt.text.split(",").map((t) => t.trim()).filter(Boolean).some((t) => textOf(w).includes(t));
 }).sort(wpOrder);
 const mapWps = () => visibleWps().filter((w) => !filt.off.has(w.id));
@@ -255,18 +254,7 @@ function renderTable() {
     tdc.append(cb); tr.append(tdc);
     [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"]]
       .forEach(([t, cls]) => { const td = document.createElement("td"); td.textContent = t; if (cls) td.className = cls; tr.append(td); });
-    const tdp = document.createElement("td"); tdp.className = "c pts";
-    if (canEdit()) {
-      const sel = document.createElement("select"); sel.setAttribute("aria-label", "Puntos de " + w.name);
-      const vals = ["", ...PTS.map(String)]; if (w.pts && !PTS.includes(w.pts)) vals.push(String(w.pts));
-      vals.forEach((v) => { const o = document.createElement("option"); o.value = v; o.textContent = v ? v + " pts" : "—"; sel.append(o); });
-      sel.value = w.pts ? String(w.pts) : "";
-      sel.onchange = async () => {
-        try { must(await sb.from("waypoints").update({ points: sel.value ? parseInt(sel.value, 10) : null }).eq("id", w.id)); w.pts = sel.value ? parseInt(sel.value, 10) : null; refilter(); }
-        catch (er) { $("expMsg").textContent = writeErr(er); }
-      };
-      tdp.append(sel);
-    } else tdp.textContent = w.pts ? w.pts + " pts" : "";
+    const tdp = document.createElement("td"); tdp.className = "c pts"; tdp.textContent = w.pts ? w.pts + " pts" : "";
     tr.append(tdp);
     { const td = document.createElement("td"); td.textContent = w.desc || ""; tr.append(td); }
     const act = document.createElement("td"); act.className = "act";
@@ -302,9 +290,26 @@ function renderScope() {
     sel.textContent = ""; opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
   }
   sel.value = state.stageFilter;
-  $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size && filt.pts.size === 6 && !filt.only;
-  // only offer "other" and "none" when there are such waypoints
-  $("fPtsOtros").hidden = !rallyWps().some((w) => ptsKey(w) === "otros");
+  $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size && !filt.ptsOff.size && !filt.only;
+  renderPtsFilter();
+}
+// one tick per score the waypoints of this stage really have (15, 25…), plus "Sin pts"; untick to hide them
+function renderPtsFilter() {
+  const box = $("fPts"), count = new Map();
+  rallyWps().filter((w) => state.stageFilter === "all" || stageKey(w) === state.stageFilter)
+    .forEach((w) => count.set(ptsKey(w), (count.get(ptsKey(w)) || 0) + 1));
+  const keys = [...count.keys()].sort((a, b) => (a === "sin") - (b === "sin") || a - b);
+  const sig = keys.map((k) => k + ":" + count.get(k) + ":" + filt.ptsOff.has(k)).join(",");
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.querySelectorAll("label").forEach((l) => l.remove());
+  box.hidden = !keys.length || (keys.length === 1 && keys[0] === "sin");
+  keys.forEach((k) => {
+    const l = document.createElement("label"), cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = k; cb.checked = !filt.ptsOff.has(k);
+    cb.onchange = () => { if (cb.checked) filt.ptsOff.delete(k); else filt.ptsOff.add(k); refilter(); };
+    l.append(cb, ` ${k === "sin" ? "Sin pts" : k + " pts"} (${count.get(k)})`); box.append(l);
+  });
 }
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderRoutes(); renderMap(); renderDownloads(); };
@@ -320,12 +325,11 @@ $("fText").addEventListener("input", (e) => { filt.text = e.target.value.trim().
 $("fFrom").addEventListener("input", (e) => { filt.from = numOrNull(e.target.value); refilter(); });
 $("fTo").addEventListener("input", (e) => { filt.to = numOrNull(e.target.value); refilter(); });
 $("fTracks").onchange = (e) => { filt.tracks = e.target.checked; renderMap(); renderDownloads(); };
-document.querySelectorAll("#fPts input").forEach((cb) => cb.onchange = () => { if (cb.checked) filt.pts.add(cb.value); else filt.pts.delete(cb.value); refilter(); });
 $("fAll").onclick = () => { visibleWps().forEach((w) => filt.off.delete(w.id)); refilter(); };
 $("fNone").onclick = () => { visibleWps().forEach((w) => filt.off.add(w.id)); refilter(); };
 $("fClear").onclick = () => {
   Object.assign(filt, { text: "", from: null, to: null, only: null }); filt.off.clear();
-  document.querySelectorAll("#fPts input").forEach((cb) => { cb.checked = true; filt.pts.add(cb.value); });
+  filt.ptsOff.clear();
   $("fText").value = ""; $("fFrom").value = ""; $("fTo").value = ""; refilter();
 };
 
@@ -855,7 +859,7 @@ function updateParsed() {
 $("wLat").addEventListener("input", updateParsed); $("wLon").addEventListener("input", updateParsed);
 function startEdit(w) {
   $("moreWays").open = true; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
-  $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || ""; $("wPts").value = w.pts && PTS.includes(w.pts) ? String(w.pts) : "";
+  $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || ""; $("wPts").value = w.pts || "";
   $("wLat").value = fmtCoord(w.lat, true, "dm"); $("wLon").value = fmtCoord(w.lon, false, "dm");
   $("wCancel").hidden = false; $("wSave").textContent = "Guardar cambios"; updateParsed();
   $("wpForm").scrollIntoView({ behavior: "smooth", block: "center" }); $("wName").focus({ preventScroll: true });

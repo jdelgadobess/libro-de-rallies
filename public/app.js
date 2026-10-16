@@ -1,24 +1,24 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, writeBatch, connectFirestoreEmulator } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
 
 const CFG = window.APP_CONFIG;
-const fb = initializeApp(CFG.firebase);
-const auth = getAuth(fb);
-const db = getFirestore(fb);
-const fns = getFunctions(fb, CFG.functionsRegion || "europe-west1");
-if (CFG.emulators && location.hostname === "localhost") { // local testing only (firebase emulators:start)
-  connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "localhost", 8080);
-  connectFunctionsEmulator(fns, "localhost", 5001);
-}
-const leerRoadbook = httpsCallable(fns, "leerRoadbook", { timeout: 300000 });
+const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
+
+// database rows <-> the shape the page works with
+const rallyIn = (r) => ({ id: r.id, year: r.year, name: r.name, created: r.created_at });
+const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, seq: r.seq, created: r.created_at });
+const wpOut = (w) => {
+  const o = { rally_id: w.rallyId, stage: w.stage, name: w.name, lat: w.lat, lon: w.lon, page: w.page, descr: w.desc };
+  if (w.seq !== undefined) o.seq = w.seq;
+  if (w.source) o.source = w.source;
+  if (w.by) o.created_by = w.by;
+  return o;
+};
+const must = ({ data, error }) => { if (error) throw error; return data; };
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ["#c1272d", "#2f4fb5", "#006233", "#e3a21a", "#b5532c", "#1b8a8a", "#7a3b8f", "#d9662b", "#4f7f2a", "#8c1d40"];
 const state = { user: null, role: null, rallies: [], wps: [], rallyId: null, stageFilter: "all", hi: null, fmt: "dm", photos: [], pending: null, reading: false };
-const unsubs = [];
+let channel = null, bootedFor;
 const canEdit = () => state.role === "admin" || state.role === "editor";
 
 try { state.fmt = localStorage.getItem("rally.fmt") || "dm"; $("padNums").checked = localStorage.getItem("rally.pad") === "1"; } catch (e) {}
@@ -76,15 +76,17 @@ const currentStage = () => { const v = $("stageNo").value.trim(); return v === "
 
 function showNotice(t) { $("notice").textContent = t || ""; $("notice").hidden = !t; }
 function writeErr(e) {
-  return e && e.code === "permission-denied" ? "No tienes permiso para guardar." : "No se pudo guardar (" + (e && e.code || "error") + "). Inténtalo de nuevo.";
+  return e && e.code === "42501" ? "No tienes permiso para guardar." : "No se pudo guardar (" + (e && (e.code || e.message) || "error") + "). Inténtalo de nuevo.";
 }
 
 /* ---------- sign-in and access ---------- */
-$("login").onclick = () => signInWithPopup(auth, new GoogleAuthProvider()).catch((e) => { $("gateText").textContent = "No se pudo entrar (" + e.code + ")."; });
-$("logout").onclick = () => signOut(auth);
+$("login").onclick = () => sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } })
+  .then(({ error }) => { if (error) $("gateText").textContent = "No se pudo entrar (" + error.message + ")."; });
+$("logout").onclick = () => sb.auth.signOut();
 $("claim").onclick = async () => {
-  try { await setDoc(doc(db, "config/owner"), { uid: state.user.uid, email: state.user.email, created: new Date().toISOString() }); boot(state.user); }
-  catch (e) { $("gateText").textContent = "Otra persona ya es la administradora de esta web."; }
+  const { error } = await sb.from("site_owner").insert({ email: state.user.email });
+  if (error) { $("gateText").textContent = "Otra persona ya es la administradora de esta web."; return; }
+  bootedFor = undefined; boot(state.user);
 };
 
 function gate(title, text, { login = false, claim = false } = {}) {
@@ -93,39 +95,62 @@ function gate(title, text, { login = false, claim = false } = {}) {
   $("login").hidden = !login; $("claim").hidden = !claim;
 }
 
-async function roleFor(user) {
-  const owner = await getDoc(doc(db, "config/owner"));
-  if (!owner.exists()) return "unclaimed";
-  if (owner.data().uid === user.uid) return "admin";
-  try { const m = await getDoc(doc(db, "members", user.email.toLowerCase())); return m.exists() ? m.data().role : null; }
-  catch (e) { return null; }
+async function roleFor() {
+  const { data: role } = await sb.rpc("my_role");
+  if (role) return role;
+  const { data: owner } = await sb.from("site_owner").select("id").limit(1);
+  return owner && owner.length ? null : "unclaimed";
 }
 
-onAuthStateChanged(auth, (user) => boot(user));
+// boot once per signed-in person (token refreshes fire this too)
+sb.auth.onAuthStateChange((_ev, session) => {
+  const user = session ? session.user : null;
+  if ((user && user.id) === bootedFor) return;
+  bootedFor = user && user.id;
+  setTimeout(() => boot(user), 0);
+});
+
+async function loadAll() {
+  try {
+    const [r, w] = await Promise.all([sb.from("rallies").select("*"), sb.from("waypoints").select("*").range(0, 9999)]);
+    state.rallies = must(r).map(rallyIn); state.wps = must(w).map(wpIn); showNotice(""); render();
+  } catch (e) { showNotice("No se pudo leer el registro (" + (e.code || e.message) + ")."); }
+}
+let reloadTimer;
+const reloadSoon = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(loadAll, 300); };
+async function loadMembers() {
+  const { data, error } = await sb.from("members").select("*");
+  if (!error) renderMembers(data.map((m) => ({ id: m.email, role: m.role })));
+}
+async function loadFeed() {
+  const { data } = await sb.from("earth_feed").select("token").maybeSingle();
+  renderFeed(data ? data.token : null);
+}
 
 async function boot(user) {
-  unsubs.splice(0).forEach((u) => u());
-  state.user = user;
+  if (channel) { sb.removeChannel(channel); channel = null; }
+  state.user = user; state.role = null;
   $("userbar").hidden = !user;
   if (!user) { gate("Entrar", "Entra con tu cuenta de Google para ver las pruebas.", { login: true }); return; }
-  $("uName").textContent = user.displayName || user.email;
-  $("uPhoto").src = user.photoURL || ""; $("uPhoto").hidden = !user.photoURL;
-  const role = await roleFor(user);
+  const meta = user.user_metadata || {};
+  $("uName").textContent = meta.full_name || meta.name || user.email;
+  const photo = meta.avatar_url || meta.picture || "";
+  $("uPhoto").src = photo; $("uPhoto").hidden = !photo;
+  const role = await roleFor();
   if (role === "unclaimed") { gate("Web nueva", "Nadie administra todavía esta web. Si es tuya, pulsa el botón y serás el administrador.", { claim: true }); return; }
   if (!role) { gate("Sin acceso", `Tu cuenta (${user.email}) no tiene acceso. Pide al administrador que te añada con este correo.`); return; }
   state.role = role;
   $("gate").hidden = true; $("app").hidden = false;
   document.body.classList.toggle("viewer-only-hide", !canEdit());
   $("adminPanel").hidden = role !== "admin";
-  const err = (e) => showNotice("No se pudo leer el registro (" + e.code + ").");
-  unsubs.push(onSnapshot(collection(db, "rallies"), (s) => { state.rallies = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); }, err));
-  unsubs.push(onSnapshot(collection(db, "waypoints"), (s) => { state.wps = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); }, err));
-  if (role === "admin") {
-    unsubs.push(onSnapshot(collection(db, "members"), (s) => renderMembers(s.docs.map((d) => ({ id: d.id, ...d.data() })))));
-    unsubs.push(onSnapshot(doc(db, "config/feed"), (s) => renderFeed(s.exists() ? s.data().token : null)));
-  } else {
-    $("feedUrl").textContent = "El administrador puede crear y compartir este enlace.";
-  }
+  // changes made by anyone show up for everyone with the page open
+  channel = sb.channel("libro")
+    .on("postgres_changes", { event: "*", schema: "public", table: "rallies" }, reloadSoon)
+    .on("postgres_changes", { event: "*", schema: "public", table: "waypoints" }, reloadSoon)
+    .subscribe();
+  await loadAll();
+  if (role === "admin") { loadMembers(); loadFeed(); }
+  else $("feedUrl").textContent = "El administrador puede crear y compartir este enlace.";
   loadMaps();
 }
 
@@ -200,7 +225,7 @@ function renderTable() {
       const ed = document.createElement("button"); ed.type = "button"; ed.className = "ghost"; ed.textContent = "Editar"; ed.onclick = () => startEdit(w);
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
       del.onclick = async () => {
-        if (del.dataset.armed) { try { await deleteDoc(doc(db, "waypoints", w.id)); } catch (er) { $("expMsg").textContent = writeErr(er); } return; }
+        if (del.dataset.armed) { try { must(await sb.from("waypoints").delete().eq("id", w.id)); reloadSoon(); } catch (er) { $("expMsg").textContent = writeErr(er); } return; }
         del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn";
         setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "Borrar"; del.className = "ghost"; } }, 4000);
       };
@@ -268,9 +293,9 @@ function openYearForm() {
 $("nyCancel").onclick = () => { $("yearForm").hidden = true; };
 $("yearForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const d = { year: parseInt($("nyYear").value, 10), name: $("nyName").value.trim(), created: new Date().toISOString() };
+  const d = { year: parseInt($("nyYear").value, 10), name: $("nyName").value.trim() };
   if (!d.year || !d.name) return;
-  try { const ref = await addDoc(collection(db, "rallies"), d); $("yearForm").hidden = true; state.rallyId = ref.id; state.stageFilter = "all"; render(); }
+  try { const ref = must(await sb.from("rallies").insert(d).select().single()); state.rallies.push(rallyIn(ref)); $("yearForm").hidden = true; state.rallyId = ref.id; state.stageFilter = "all"; render(); }
   catch (err) { showNotice(writeErr(err)); }
 });
 function resetDel() { $("rallyDel").hidden = false; $("rallyDelYes").hidden = true; $("rallyDelNo").hidden = true; }
@@ -279,9 +304,8 @@ $("rallyDelNo").onclick = resetDel;
 $("rallyDelYes").onclick = async () => {
   const id = state.rallyId; if (!id) return;
   try {
-    const mine = state.wps.filter((w) => w.rallyId === id);
-    for (let i = 0; i < mine.length; i += 400) { const b = writeBatch(db); mine.slice(i, i + 400).forEach((w) => b.delete(doc(db, "waypoints", w.id))); await b.commit(); }
-    await deleteDoc(doc(db, "rallies", id)); state.rallyId = null; resetDel();
+    must(await sb.from("rallies").delete().eq("id", id)); // its waypoints go with it
+    state.rallyId = null; resetDel(); await loadAll();
   } catch (err) { showNotice(writeErr(err)); }
 };
 
@@ -328,8 +352,12 @@ async function readPhotos() {
       const batch = state.photos.slice(i, i + 4);
       msg.textContent = `Leyendo foto${batch.length > 1 ? "s" : ""} ${i + 1}${batch.length > 1 ? "–" + (i + batch.length) : ""} de ${state.photos.length}…`;
       const images = await Promise.all(batch.map((f) => toJpeg(f)));
-      const res = await leerRoadbook({ images });
-      (res.data.waypoints || []).forEach((o) => found.push(o));
+      const { data, error } = await sb.functions.invoke("leer-roadbook", { body: { images } });
+      if (error) {
+        let m = ""; try { m = (await error.context.json()).error; } catch (er) {}
+        throw new Error(m || "No se pudieron leer las fotos.");
+      }
+      (data.waypoints || []).forEach((o) => found.push(o));
     }
   } catch (e) {
     failed = true;
@@ -381,19 +409,18 @@ $("revSave").onclick = async () => {
   const bad = rows.filter((x) => parseCoord(x.latRaw, true) === null || parseCoord(x.lonRaw, false) === null || !x.name.trim());
   if (bad.length) { $("photoMsg").textContent = `Hay ${bad.length} fila(s) marcadas sin nombre o con coordenadas no válidas. Corrígelas o desmárcalas.`; return; }
   const have = new Set(rallyWps().map((w) => stageKey(w) + "|" + w.name));
-  const seqBase = Date.now() * 100, now = new Date().toISOString();
-  const b = writeBatch(db); let added = 0, skipped = 0;
+  const seqBase = Date.now() * 100;
+  const batch = []; let skipped = 0;
   rows.forEach((x, i) => {
     if (have.has(st + "|" + x.name.trim())) { skipped++; return; }
-    b.set(doc(collection(db, "waypoints")), { rallyId: r.id, stage: st, name: x.name.trim(), lat: parseCoord(x.latRaw, true), lon: parseCoord(x.lonRaw, false), page: x.page.trim(), desc: x.desc.trim(), seq: seqBase + i, source: "foto", created: now, by: state.user.email });
-    added++;
+    batch.push(wpOut({ rallyId: r.id, stage: st, name: x.name.trim(), lat: parseCoord(x.latRaw, true), lon: parseCoord(x.lonRaw, false), page: x.page.trim(), desc: x.desc.trim(), seq: seqBase + i, source: "foto", by: state.user.email }));
   });
   $("revSave").disabled = true;
   try {
-    await b.commit();
-    state.pending = null; state.stageFilter = st;
-    $("photoMsg").textContent = `Guardados ${added} waypoints en la etapa ${st || "(sin número)"}` + (skipped ? `; ${skipped} ya existían y no se duplicaron.` : ".");
+    if (batch.length) must(await sb.from("waypoints").insert(batch));
+    state.pending = null; state.stageFilter = st; await loadAll();
     $("photos").value = ""; setPhotos([]);
+    $("photoMsg").textContent = `Guardados ${batch.length} waypoints en la etapa ${st || "(sin número)"}` + (skipped ? `; ${skipped} ya existían y no se duplicaron.` : ".");
   } catch (e) { $("photoMsg").textContent = writeErr(e); }
   $("revSave").disabled = false; render();
 };
@@ -426,8 +453,9 @@ $("wpForm").addEventListener("submit", async (e) => {
   const d = { rallyId: state.rallyId, stage: currentStage(), name: $("wName").value.trim(), page: $("wPage").value.trim(), desc: $("wDesc").value.trim(), lat: la, lon: lo };
   try {
     const ed = $("wEditing").value;
-    if (ed) await updateDoc(doc(db, "waypoints", ed), d);
-    else await addDoc(collection(db, "waypoints"), { ...d, seq: Date.now() * 100, source: "manual", created: new Date().toISOString(), by: state.user.email });
+    if (ed) must(await sb.from("waypoints").update(wpOut(d)).eq("id", ed));
+    else must(await sb.from("waypoints").insert(wpOut({ ...d, seq: Date.now() * 100, source: "manual", by: state.user.email })));
+    reloadSoon();
     $("wMsg").textContent = (ed ? "Actualizado " : "Guardado ") + d.name + " en " + stageLabel(d.stage).toLowerCase() + ".";
     const next = !ed && d.name.match(/^(.*?)(\d+)$/), page = d.page;
     clearWp(); if (next) $("wName").value = next[1] + (parseInt(next[2], 10) + 1); $("wPage").value = page;
@@ -442,7 +470,7 @@ $("gpxFile").addEventListener("change", async (e) => {
   let nodes = [...xml.getElementsByTagName("wpt")];
   if (!nodes.length) nodes = [...xml.getElementsByTagName("rtept")];
   if (!nodes.length) { msg.textContent = "El GPX no trae waypoints (solo track)."; return; }
-  const st = currentStage(), seqBase = Date.now() * 100, now = new Date().toISOString();
+  const st = currentStage(), seqBase = Date.now() * 100;
   const have = new Set(rallyWps().map((w) => stageKey(w) + "|" + w.name + "|" + w.lat + "|" + w.lon));
   const txtOf = (n, t) => { const el = n.getElementsByTagName(t)[0]; return el ? el.textContent.trim() : ""; };
   const rows = [];
@@ -450,10 +478,11 @@ $("gpxFile").addEventListener("change", async (e) => {
     const lat = Math.round(parseFloat(n.getAttribute("lat")) * 1e6) / 1e6, lon = Math.round(parseFloat(n.getAttribute("lon")) * 1e6) / 1e6;
     const name = txtOf(n, "name") || "WP" + (i + 1);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || have.has(st + "|" + name + "|" + lat + "|" + lon)) return;
-    rows.push({ rallyId: state.rallyId, stage: st, name, lat, lon, page: "", desc: txtOf(n, "desc") || txtOf(n, "cmt"), seq: seqBase + i, source: "gpx", created: now, by: state.user.email });
+    rows.push(wpOut({ rallyId: state.rallyId, stage: st, name, lat, lon, page: "", desc: txtOf(n, "desc") || txtOf(n, "cmt"), seq: seqBase + i, source: "gpx", by: state.user.email }));
   });
   try {
-    for (let i = 0; i < rows.length; i += 400) { const b = writeBatch(db); rows.slice(i, i + 400).forEach((r) => b.set(doc(collection(db, "waypoints")), r)); await b.commit(); }
+    if (rows.length) must(await sb.from("waypoints").insert(rows));
+    await loadAll();
     msg.textContent = `Añadidos ${rows.length} waypoints a ${stageLabel(st).toLowerCase()}` + (nodes.length > rows.length ? ` (${nodes.length - rows.length} repetidos u omitidos).` : ".");
   } catch (err) { msg.textContent = writeErr(err); }
 });
@@ -528,9 +557,9 @@ function renderMembers(list) {
     const sel = document.createElement("select"); sel.style.width = "auto"; sel.setAttribute("aria-label", "Permiso de " + m.id);
     Object.entries(ROLES).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
     sel.value = m.role;
-    sel.onchange = () => setDoc(doc(db, "members", m.id), { role: sel.value, added: m.added || new Date().toISOString() }).catch((e) => { $("mMsg").textContent = writeErr(e); });
+    sel.onchange = async () => { const { error } = await sb.from("members").update({ role: sel.value }).eq("email", m.id); if (error) $("mMsg").textContent = writeErr(error); loadMembers(); };
     const rm = document.createElement("button"); rm.type = "button"; rm.className = "ghost"; rm.textContent = "Quitar";
-    rm.onclick = () => deleteDoc(doc(db, "members", m.id)).catch((e) => { $("mMsg").textContent = writeErr(e); });
+    rm.onclick = async () => { const { error } = await sb.from("members").delete().eq("email", m.id); if (error) $("mMsg").textContent = writeErr(error); loadMembers(); };
     const right = document.createElement("span"); right.className = "btns"; right.append(sel, rm);
     li.append(em, right); ul.append(li);
   });
@@ -538,16 +567,17 @@ function renderMembers(list) {
 $("memberForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = $("mEmail").value.trim().toLowerCase();
-  try { await setDoc(doc(db, "members", email), { role: $("mRole").value, added: new Date().toISOString() }); $("mEmail").value = ""; $("mMsg").textContent = `${email} ya puede entrar con su cuenta de Google en esta misma dirección.`; }
+  try { must(await sb.from("members").upsert({ email, role: $("mRole").value })); loadMembers(); $("mEmail").value = ""; $("mMsg").textContent = `${email} ya puede entrar con su cuenta de Google en esta misma dirección.`; }
   catch (err) { $("mMsg").textContent = writeErr(err); }
 });
 function renderFeed(token) {
   $("feedMake").hidden = !!token; $("feedCopy").disabled = !token;
-  $("feedUrl").textContent = token ? `${location.origin}/kml/${token}.kml` : "Aún no hay enlace. Créalo con el botón.";
+  $("feedUrl").textContent = token ? `${CFG.supabaseUrl}/functions/v1/kml?t=${token}` : "Aún no hay enlace. Créalo con el botón.";
 }
 $("feedMake").onclick = async () => {
   const token = [...crypto.getRandomValues(new Uint8Array(18))].map((b) => b.toString(16).padStart(2, "0")).join("");
-  try { await setDoc(doc(db, "config/feed"), { token, created: new Date().toISOString() }); } catch (e) { $("gMsg").textContent = writeErr(e); }
+  const { error } = await sb.from("earth_feed").upsert({ id: true, token });
+  if (error) $("gMsg").textContent = writeErr(error); else loadFeed();
 };
 $("feedCopy").onclick = async () => {
   try { await navigator.clipboard.writeText($("feedUrl").textContent); $("gMsg").textContent = "Enlace copiado. En Google Earth Pro: Añadir › Enlace de red y pégalo."; }

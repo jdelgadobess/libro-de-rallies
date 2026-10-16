@@ -1,15 +1,8 @@
-// Rellena estos datos con los de TU proyecto de Firebase (Configuración del proyecto › Tus apps › Web)
+// Rellena estos datos con los de TU proyecto de Supabase (Project Settings › API)
 // y tu clave de Google Maps (Google Cloud › APIs y servicios › Credenciales).
-// No son secretos: Firebase y Google Maps los protegen con las reglas y restringiendo la clave a tu dominio.
+// No son secretos: Supabase los protege con las reglas de la base de datos y la clave de Maps se restringe a tu dominio.
 window.APP_CONFIG = {
-  firebase: {
-    apiKey: "PEGA_AQUI",
-    authDomain: "PEGA_AQUI.firebaseapp.com",
-    projectId: "PEGA_AQUI",
-    storageBucket: "PEGA_AQUI.firebasestorage.app",
-    messagingSenderId: "PEGA_AQUI",
-    appId: "PEGA_AQUI",
-  },
+  supabaseUrl: "https://PEGA_AQUI.supabase.co",
+  supabaseAnonKey: "PEGA_AQUI",
   mapsApiKey: "PEGA_AQUI",
-  functionsRegion: "europe-west1",
 };

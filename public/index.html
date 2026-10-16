@@ -188,9 +188,21 @@
       </section>
 
       <div class="tablebox">
+        <div class="filters" id="filters">
+          <label>Etapa <select id="fStage"></select></label>
+          <label>Buscar <input id="fText" type="search" placeholder="WP27, S rojo, pág 23…" autocomplete="off"></label>
+          <label>Del WP <input id="fFrom" type="number" inputmode="numeric" min="0" placeholder="1"></label>
+          <label>al <input id="fTo" type="number" inputmode="numeric" min="0" placeholder="99"></label>
+          <label class="chk"><input type="checkbox" id="fTracks" checked> Ver track</label>
+          <div class="btns">
+            <button type="button" class="ghost" id="fAll">Todos al mapa</button>
+            <button type="button" class="ghost" id="fNone">Ninguno</button>
+            <button type="button" class="ghost" id="fClear">Quitar filtros</button>
+          </div>
+        </div>
         <div class="scroll">
           <table>
-            <thead><tr><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Descripción</th><th></th></tr></thead>
+            <thead><tr><th title="Ver en el mapa">Mapa</th><th>WP</th><th>Latitud</th><th>Longitud</th><th>Pág.</th><th>Descripción</th><th></th></tr></thead>
             <tbody id="wpBody"></tbody>
           </table>
         </div>
@@ -201,6 +213,7 @@
         </div>
         <div class="foot" style="padding-top:0">
           <div class="dl-stages" id="dlStages"></div>
+          <button type="button" class="ghost" id="dlSel">GPX de lo marcado</button>
           <button type="button" class="ghost" id="dlKml">Descargar KML</button>
         </div>
         <p class="msg" id="expMsg" style="padding:0 12px 10px"></p>

@@ -63,7 +63,7 @@ const rallyWps = () => state.wps.filter((w) => w.rallyId === state.rallyId && Nu
 const stagesOf = (list) => [...new Set(list.map(stageKey))].sort((a, b) => (a === "") - (b === "") || natural(a, b));
 const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId);
 const allStages = () => stagesOf([...rallyWps(), ...rallyTracks()]);
-const visibleTracks = () => rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter);
+const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter) : [];
 const stageColor = (s) => PALETTE[(allStages().indexOf(s) + PALETTE.length) % PALETTE.length];
 // roadbook order: DSS first, then by the number in the name (WP2 before WP10), ASS last; ties by reading order
 function orderKey(w) {
@@ -74,7 +74,17 @@ function orderKey(w) {
 }
 const seqOf = (w) => typeof w.seq === "number" ? w.seq : Date.parse(w.created || 0) || 0;
 const wpOrder = (a, b) => ((stageKey(a) === "") - (stageKey(b) === "")) || natural(stageKey(a), stageKey(b)) || (orderKey(a) - orderKey(b)) || (seqOf(a) - seqOf(b)) || natural(a.name, b.name);
-const visibleWps = () => rallyWps().filter((w) => state.stageFilter === "all" || stageKey(w) === state.stageFilter).sort(wpOrder);
+// table filters: stage, text, WP number range; the per-row tick decides what goes to the map
+const filt = { text: "", from: null, to: null, tracks: true, off: new Set() };
+const textOf = (w) => [w.name, w.page && "pág " + w.page, w.desc].filter(Boolean).join(" ").toLowerCase();
+const visibleWps = () => rallyWps().filter((w) => {
+  if (state.stageFilter !== "all" && stageKey(w) !== state.stageFilter) return false;
+  const n = orderKey(w);
+  if (filt.from !== null && n < filt.from) return false;
+  if (filt.to !== null && n > filt.to) return false;
+  return !filt.text || filt.text.split(",").map((t) => t.trim()).filter(Boolean).some((t) => textOf(w).includes(t));
+}).sort(wpOrder);
+const mapWps = () => visibleWps().filter((w) => !filt.off.has(w.id));
 const scopeLabel = () => { const r = rally(); return r ? r.year + " · " + (state.stageFilter === "all" ? "todas las etapas" : stageLabel(state.stageFilter)) : ""; };
 const currentStage = () => { const v = $("stageNo").value.trim(); return v === "" ? "" : String(parseInt(v, 10)); };
 
@@ -216,8 +226,8 @@ function renderTable() {
   const tb = $("wpBody"); tb.textContent = "";
   const list = visibleWps();
   if (!list.length) {
-    const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 6; td.className = "hint";
-    td.textContent = rally() ? "Aún no hay waypoints aquí." + (canEdit() ? " Importa las fotos del roadbook en el paso 3." : "") : "Todavía no hay ninguna prueba.";
+    const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 7; td.className = "hint";
+    td.textContent = rallyWps().length && rally() ? "Ningún waypoint coincide con el filtro." : rally() ? "Aún no hay waypoints aquí." + (canEdit() ? " Importa las fotos del roadbook en el paso 3." : "") : "Todavía no hay ninguna prueba.";
     tr.append(td); tb.append(tr);
   }
   let last = null;
@@ -225,10 +235,14 @@ function renderTable() {
     const k = stageKey(w);
     if (k !== last) {
       last = k;
-      const h = document.createElement("tr"); h.className = "stagehead"; const td = document.createElement("td"); td.colSpan = 6;
+      const h = document.createElement("tr"); h.className = "stagehead"; const td = document.createElement("td"); td.colSpan = 7;
       td.textContent = stageLabel(k) + " · " + list.filter((x) => stageKey(x) === k).length + " WP"; h.append(td); tb.append(h);
     }
-    const tr = document.createElement("tr"); tr.id = "row-" + w.id; if (state.hi === w.id) tr.className = "hi";
+    const tr = document.createElement("tr"); tr.id = "row-" + w.id; tr.className = (state.hi === w.id ? "hi" : "") + (filt.off.has(w.id) ? " off" : "");
+    const tdc = document.createElement("td"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.style.width = "auto";
+    cb.checked = !filt.off.has(w.id); cb.setAttribute("aria-label", "Ver " + w.name + " en el mapa");
+    cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); tr.classList.toggle("off", !cb.checked); renderMap(); renderDownloads(); renderScope(); };
+    tdc.append(cb); tr.append(tdc);
     [[w.name, "nm"], [fmtCoord(w.lat, true, state.fmt), "c"], [fmtCoord(w.lon, false, state.fmt), "c"], [w.page || "", "c"], [w.desc || "", ""]]
       .forEach(([t, cls]) => { const td = document.createElement("td"); td.textContent = t; if (cls) td.className = cls; tr.append(td); });
     const act = document.createElement("td"); act.className = "act";
@@ -245,11 +259,34 @@ function renderTable() {
       act.append(" ", ed, " ", del);
     }
     tr.append(act);
-    tr.onclick = (ev) => { if (ev.target.closest("a,button")) return; state.hi = w.id; renderTable(); renderMap(); };
+    tr.onclick = (ev) => { if (ev.target.closest("a,button,input")) return; state.hi = w.id; renderTable(); renderMap(); };
     tb.append(tr);
   });
-  $("exportScope").textContent = list.length + " waypoints · " + scopeLabel();
+  renderScope();
 }
+function renderScope() {
+  const n = visibleWps().length, m = mapWps().length;
+  $("exportScope").textContent = n + " waypoints · " + scopeLabel() + (m !== n ? ` · ${m} en el mapa` : "");
+  const sel = $("fStage"), opts = [["all", "Todas"], ...allStages().map((k) => [k, stageLabel(k)])];
+  if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i][0])) {
+    sel.textContent = ""; opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
+  }
+  sel.value = state.stageFilter;
+  $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size;
+}
+const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
+const refilter = () => { renderTable(); renderMap(); renderDownloads(); };
+$("fStage").onchange = (e) => { state.stageFilter = e.target.value; if (state.stageFilter !== "all" && state.stageFilter !== "") $("stageNo").value = state.stageFilter; state.hi = null; render(); };
+$("fText").addEventListener("input", (e) => { filt.text = e.target.value.trim().toLowerCase(); refilter(); });
+$("fFrom").addEventListener("input", (e) => { filt.from = numOrNull(e.target.value); refilter(); });
+$("fTo").addEventListener("input", (e) => { filt.to = numOrNull(e.target.value); refilter(); });
+$("fTracks").onchange = (e) => { filt.tracks = e.target.checked; renderMap(); renderDownloads(); };
+$("fAll").onclick = () => { visibleWps().forEach((w) => filt.off.delete(w.id)); refilter(); };
+$("fNone").onclick = () => { visibleWps().forEach((w) => filt.off.add(w.id)); refilter(); };
+$("fClear").onclick = () => {
+  Object.assign(filt, { text: "", from: null, to: null }); filt.off.clear();
+  $("fText").value = ""; $("fFrom").value = ""; $("fTo").value = ""; refilter();
+};
 
 /* ---------- map (satellite, no key needed) ---------- */
 let lmap = null, layer = null, fitKey = "", measure = [];
@@ -278,7 +315,7 @@ function loadMaps() {
 function renderMap() {
   if (!lmap) return;
   layer.clearLayers();
-  const list = visibleWps(), trks = visibleTracks();
+  const list = mapWps(), trks = visibleTracks();
   $("scaleTxt").textContent = list.length || trks.length ? "Colores por etapa · línea continua = track · vista satélite" : "Sin waypoints en esta selección";
   if (!list.length && !trks.length) return;
   const pts = list.map((w) => [w.lat, w.lon]);
@@ -311,7 +348,7 @@ function renderMap() {
       .addTo(layer);
     if (hi) m.bringToFront();
   });
-  const key = state.rallyId + "|" + state.stageFilter + "|" + list.length + "|" + trks.length;
+  const key = state.rallyId + "|" + state.stageFilter + "|" + list.map((w) => w.id).join(",") + "|" + trks.length;
   if (key !== fitKey) {
     fitKey = key;
     if (pts.length === 1) lmap.setView(pts[0], 15);
@@ -695,11 +732,17 @@ function renderDownloads() {
     };
     box.append(b);
   });
-  $("dlKml").disabled = !visibleWps().length && !visibleTracks().length;
+  $("dlKml").disabled = !mapWps().length && !visibleTracks().length;
+  $("dlSel").disabled = !mapWps().length;
 }
 $("dlKml").onclick = () => {
   const f = state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter);
-  download(f + ".kml", buildKml(visibleWps(), visibleTracks()), "application/vnd.google-earth.kml+xml");
+  download(f + ".kml", buildKml(mapWps(), visibleTracks()), "application/vnd.google-earth.kml+xml");
+};
+$("dlSel").onclick = () => {
+  const list = mapWps(), trks = visibleTracks(), f = (state.stageFilter === "all" ? baseName() : stageFile(state.stageFilter)) + "_seleccion";
+  download(f + ".gpx", buildGpx(list, rally().year + " " + rally().name + " · selección", trks), "application/gpx+xml");
+  $("expMsg").textContent = `Descargado ${f}.gpx con ${list.length} waypoints en orden` + (trks.length ? ` y ${trks.length} track${trks.length > 1 ? "s" : ""}.` : ".");
 };
 $("padNums").onchange = (e) => { try { localStorage.setItem("rally.pad", e.target.checked ? "1" : "0"); } catch (er) {} };
 $("fmt").onchange = (e) => { state.fmt = e.target.value; try { localStorage.setItem("rally.fmt", state.fmt); } catch (er) {} render(); };

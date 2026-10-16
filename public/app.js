@@ -204,17 +204,13 @@ function render() {
   $("rallyName").textContent = r ? r.name : "";
   $("rallyDelBox").hidden = !r;
 
-  const sc = $("stages"); sc.textContent = "";
   const stList = allStages();
   if (state.stageFilter !== "all" && !stList.includes(state.stageFilter)) state.stageFilter = "all";
-  if (r) [["all", "Todas"], ...stList.map((k) => [k, k === "" ? "Sin etapa" : "E" + k])].forEach(([k, t]) => {
-    const b = document.createElement("button"); b.type = "button"; b.className = "chip";
-    b.setAttribute("aria-pressed", String(state.stageFilter === k));
-    const n = k === "all" ? rallyWps().length : rallyWps().filter((w) => stageKey(w) === k).length;
-    b.textContent = t + " · " + n;
-    b.onclick = () => pickStage(k);
-    sc.append(b);
-  });
+  $("allStages").setAttribute("aria-pressed", String(state.stageFilter === "all"));
+  $("allStages").textContent = "Todas · " + rallyWps().length + " WP";
+  $("stageHint").textContent = state.stageFilter === "all"
+    ? "Viendo todas las etapas. Escribe un número para ver solo esa etapa" + (canEdit() ? " y guardar en ella los waypoints nuevos." : ".")
+    : `Viendo la etapa ${state.stageFilter}: ${rallyWps().filter((w) => stageKey(w) === state.stageFilter).length} WP.` + (canEdit() ? " Los waypoints nuevos se guardan aquí." : "");
 
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r; $("gpxFile").disabled = !r;
@@ -278,6 +274,7 @@ function renderScope() {
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
+$("allStages").onclick = () => pickStage("all");
 // step 2's stage number, its chips and the table's stage filter always show the same stage
 function pickStage(k) {
   state.stageFilter = k; state.hi = null;

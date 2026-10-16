@@ -28,7 +28,6 @@
     </div>
   </div>
 </div></div>
-<div class="zellige" aria-hidden="true"></div>
 
 <div class="wrap">
   <p class="notice" id="notice" hidden></p>
@@ -66,11 +65,11 @@
 
       <section class="panel">
         <h2><span class="n">2</span>Etapa</h2>
-        <div class="btns" data-edit>
+        <div class="btns" style="align-items:center">
           <label style="grid-auto-flow:column;align-items:center;gap:10px">Nº de etapa <input class="big" id="stageNo" type="number" min="0" max="30" inputmode="numeric" placeholder="—"></label>
+          <button type="button" class="chip" id="allStages" aria-pressed="false">Todas</button>
         </div>
-        <div class="chips" id="stages"></div>
-        <p class="hint" data-edit>Los waypoints nuevos se guardan en esta etapa. Toca una etapa para ver solo esa.</p>
+        <p class="hint" id="stageHint"></p>
       </section>
 
       <section class="panel" data-edit>

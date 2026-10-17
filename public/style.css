@@ -243,3 +243,40 @@ body:not(.tab-mec) #mecBox { display: none }
 .mecadd label.btn { padding: 7px 12px; font-size: .85rem; font-weight: 600; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; text-transform: none; letter-spacing: 0 }
 .dir-arrow { background: none; border: 0; pointer-events: none; }
 .dir-arrow svg { width: 24px; height: 24px; display: block; filter: drop-shadow(0 0 1px #fff); }
+body:not(.tab-car) #carBox { display: none }
+.tab-car .desk { display: none }
+#carList { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin: 8px 0 14px }
+.car { border: 1px solid var(--line); border-radius: 3px; padding: 12px 14px; display: grid; gap: 10px; align-content: start; background: var(--sheet-solid) }
+.car header { display: flex; justify-content: space-between; align-items: start; gap: 10px }
+.car h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .04em; font-size: 1.2rem; margin: 0 }
+.car .cm { font-size: .85rem; color: var(--muted) }
+.plate { display: inline-flex; align-items: stretch; border: 2px solid #111; border-radius: 4px; background: #fff; color: #111; font: 700 1.05rem/1 ui-monospace, Menlo, monospace; letter-spacing: .08em; white-space: nowrap; overflow: hidden }
+.plate i { background: #003399; color: #fff; font-style: normal; font-size: .7rem; padding: 6px 4px 2px; display: flex; align-items: end }
+.plate { padding-right: 8px } .plate i { margin-right: 8px }
+.plate { align-self: start; min-height: 30px; align-items: center }
+.plate i { align-self: stretch }
+.car .alerts { display: flex; flex-wrap: wrap; gap: 6px }
+.due { font-size: .8rem; font-weight: 600; padding: 3px 8px; border-radius: 3px; background: #e8f3e0; color: #2d5a1b }
+.due.warn { background: #fff1d6; color: #7a4b00 }
+.due.bad { background: #fbe0de; color: #8f1b14 }
+.car dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0; font-size: .88rem }
+.car dl .g { grid-column: 1 / -1; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 4px }
+.car dt { color: var(--muted) } .car dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line }
+.carph { display: flex; flex-wrap: wrap; gap: 8px }
+.carph img { height: 90px; width: auto; border: 1px solid var(--line); border-radius: 3px; display: block }
+.carph figure { margin: 0; position: relative }
+.carph figure button { position: absolute; top: 2px; right: 2px; padding: 0 6px; font-size: .8rem }
+.car .btns button { padding: 4px 9px; font-size: .8rem }
+#carForm { border: 1px solid var(--line); border-radius: 3px; padding: 14px; display: grid; gap: 12px; background: var(--sheet-solid) }
+#carForm h3 { margin: 0; font-family: var(--display); text-transform: uppercase; letter-spacing: .04em }
+.carread { display: grid; gap: 6px }
+.carread label.import { font-size: 1.1rem; justify-self: start }
+.carread label.busy { opacity: .6; pointer-events: none }
+#carFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px }
+#carFields fieldset { border: 1px solid var(--line); border-radius: 3px; display: grid; gap: 6px; margin: 0; padding: 8px 10px 10px }
+#carFields legend { font-weight: 700; font-size: .85rem; padding: 0 4px }
+#carFields label { display: grid; gap: 2px; font-size: .8rem }
+#carFields input, #carFields textarea { width: 100%; box-sizing: border-box }
+#carFields .read { background: #e8f3e0; border-color: #6a9f4b }
+#carNew { width: auto; display: inline-block; padding: 9px 18px }
+.car dl { grid-template-columns: 11em 1fr }

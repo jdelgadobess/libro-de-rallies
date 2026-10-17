@@ -8,3 +8,5 @@ verify_jwt = true
 verify_jwt = false
 [functions.acceso]
 verify_jwt = true
+[functions.leer-ficha]
+verify_jwt = true

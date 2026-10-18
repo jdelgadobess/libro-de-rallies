@@ -11,7 +11,7 @@ const MIN_STEP = 8, MAX_ACC = 60, GAP_MS = 120000; // metres between saved point
 const fmtTime = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min ${String(s % 60).padStart(2, "0")} s`; };
 const kmOf = (segs) => segs.reduce((t, s) => { for (let i = 1; i < s.length; i++) t += meters(s[i - 1], s[i]); return t; }, 0) / 1000;
 
-export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved }) {
+export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove }) {
   const layer = L.layerGroup().addTo(map), recLayer = L.layerGroup().addTo(map);
   let watch = null, follow = true, last = null, rec = null, wake = null, dot = null, ring = null, head = null, recLine = null, pendingTry = false;
   let keepUntil = 0; // an important message stays a few seconds before the accuracy readout replaces it
@@ -24,6 +24,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     $("recBtn").className = rec ? "warn" : "ghost";
     $("recBtn").hidden = !canEdit();
     $("recDrop").hidden = !rec;
+    $("gpsMeasure").hidden = watch === null;
     $("recStage").hidden = !canEdit(); $("recStage").disabled = !!rec;
     if (rec) $("recStage").value = rec.stage;
     if (rec) {
@@ -36,7 +37,8 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     const ll = [p.coords.latitude, p.coords.longitude], acc = p.coords.accuracy || 0;
     if (!dot) {
       ring = L.circle(ll, { radius: acc, color: "#1a73e8", weight: 1, fillColor: "#1a73e8", fillOpacity: .12, interactive: false }).addTo(layer);
-      dot = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).bindTooltip("Estás aquí").addTo(layer);
+      dot = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).bindTooltip("Estás aquí · tócame para medir desde aquí").addTo(layer);
+      dot.on("click", (e) => { L.DomEvent.stopPropagation(e); measureHere(); });
     } else { dot.setLatLng(ll); ring.setLatLng(ll).setRadius(acc); }
     const hd = p.coords.heading;
     if (hd !== null && hd !== undefined && !Number.isNaN(hd) && (p.coords.speed || 0) > 1) {
@@ -48,7 +50,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
 
   function onPos(p) {
-    last = p; draw(p);
+    last = p; draw(p); onMove(p.coords.latitude, p.coords.longitude);
     const speed = p.coords.speed ? ` · ${Math.round(p.coords.speed * 3.6)} km/h` : "";
     msg(`Precisión ±${Math.round(p.coords.accuracy)} m${speed}`);
     if (rec && p.coords.accuracy <= MAX_ACC) {
@@ -149,6 +151,13 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     else { follow = false; ui(); }
   };
   map.on("dragstart", () => { if (watch !== null && follow) { follow = false; ui(); } });
+  // distance and course from where I am to any waypoint or spot tapped next
+  function measureHere() {
+    if (!last) { msg("Aún no tengo tu posición: espera a que salga el punto azul.", true); return; }
+    const on = onMeasure(last.coords.latitude, last.coords.longitude);
+    msg(on ? "Toca un waypoint o cualquier punto del mapa para ver la distancia desde tu posición." : "", true);
+  }
+  $("gpsMeasure").onclick = measureHere;
   $("recBtn").onclick = () => { if (rec) stopRec(); else startRec(false); };
   $("recDrop").onclick = () => {
     const b = $("recDrop");

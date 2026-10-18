@@ -403,13 +403,26 @@ function bearing(a, b) { // initial course from a to b, degrees from north
   const x = Math.cos(a.lat * rad) * Math.sin(b.lat * rad) - Math.sin(a.lat * rad) * Math.cos(b.lat * rad) * Math.cos((b.lon - a.lon) * rad);
   return String(Math.round((Math.atan2(y, x) / rad + 360) % 360) % 360).padStart(3, "0");
 }
+// the next measuring point: with my position as the start it stays the start, so each tap measures from where I am
+const addMeasure = (p) => measure[0] && measure[0].gps ? [measure[0], p] : measure.length === 1 ? [measure[0], p] : [p];
+function gpsMeasure(lat, lon) {
+  if (measure[0] && measure[0].gps) { measure = []; renderMap(); return false; }
+  measure = [{ id: null, gps: true, lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6, name: "Tu posición" }];
+  renderMap(); return true;
+}
 const fmtKm = (d) => d < 1 ? Math.round(d * 1000) + " m" : d.toLocaleString("es", { maximumFractionDigits: 2 }) + " km";
 function loadMaps() {
   if (lmap) return;
   if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
   setupLayers(lmap);
-  setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll() });
+  setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
+    onMeasure: gpsMeasure, onMove: (lat, lon) => {
+      // measuring from where I am: the start follows the GPS, redrawn every few seconds
+      const g = measure[0]; if (!g || !g.gps) return;
+      g.lat = Math.round(lat * 1e6) / 1e6; g.lon = Math.round(lon * 1e6) / 1e6;
+      if (Date.now() - (g.drawn || 0) > 3000) { g.drawn = Date.now(); renderMap(); }
+    } });
   layer = L.layerGroup().addTo(lmap);
   lmap.createPane("arrows").style.zIndex = 450;
   arrowLayer = L.layerGroup().addTo(lmap);
@@ -429,7 +442,7 @@ function loadMaps() {
     if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
     // a tap on the map is a measuring point too
     const p = { id: null, lat: Math.round(e.latlng.lat * 1e6) / 1e6, lon: Math.round(e.latlng.lng * 1e6) / 1e6, name: "Punto" };
-    measure = measure.length === 1 ? [measure[0], p] : [p];
+    measure = addMeasure(p);
     renderMap();
   });
   renderMap();
@@ -493,11 +506,11 @@ function renderMap() {
       .bindTooltip(`${fmtKm(d)} · rumbo ${cap}°`, { permanent: true, direction: "center", className: "wp-lbl dist" }).addTo(layer);
     return `${a.name} → ${b.name}: ${fmtKm(d)} en línea recta, rumbo ${cap}°`;
   };
-  mm.filter((m) => !m.id).forEach((m) => L.circleMarker([m.lat, m.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
-  if (mm.length === 2) $("scaleTxt").textContent = leg(mm[0], mm[1], false) + " · toca otro sitio para empezar de nuevo";
+  mm.filter((m) => !m.id && !m.gps).forEach((m) => L.circleMarker([m.lat, m.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
+  if (mm.length === 2) $("scaleTxt").textContent = leg(mm[0], mm[1], false) + (mm[0].gps ? " · toca otro punto para medir desde tu posición" : " · toca otro sitio para empezar de nuevo");
   else if (mm.length === 1) {
     const a = mm[0], i = a.id ? list.findIndex((w) => w.id === a.id) : -1, nx = i >= 0 ? list[i + 1] : null;
-    $("scaleTxt").textContent = nx ? leg(a, nx, true) + " (al siguiente) · toca otro punto para medir hasta él"
+    $("scaleTxt").textContent = a.gps ? "Desde tu posición: toca un waypoint o cualquier punto del mapa para ver la distancia y el rumbo" : nx ? leg(a, nx, true) + " (al siguiente) · toca otro punto para medir hasta él"
       : `Desde ${a.name}: toca otro waypoint o cualquier punto del mapa`;
   }
   list.forEach((w) => {
@@ -506,7 +519,7 @@ function renderMap() {
       if (drawing) { drawStep(); drawing.pts.push([w.lat, w.lon]); drawing.wpAt.push(w.id); renderMap(); renderDraw(); return; }
       const me = { id: w.id };
       if (measure.length === 1 && measure[0].id === w.id) measure = [];
-      else measure = measure.length === 1 ? [measure[0], me] : [me];
+      else measure = addMeasure(me);
       // stay on the map: the page must not move to the table
       const y = window.scrollY; state.hi = w.id; renderTable(); renderMap(); window.scrollTo(0, y);
     };

@@ -366,6 +366,7 @@ $("fClear").onclick = () => {
 
 /* ---------- map (satellite, no key needed) ---------- */
 let lmap = null, layer = null, fitKey = "", measure = [];
+const TOUCH = window.matchMedia && matchMedia("(pointer: coarse)").matches;
 // direction arrows along tracks and routes, spaced on screen so they stay readable at any zoom
 let arrowLayer = null, arrowLines = [];
 const arrow = (pts, color) => { if (pts.length > 1) arrowLines.push({ pts, color }); };
@@ -415,7 +416,10 @@ function loadMaps() {
   lmap.on("zoomend moveend", drawArrows);
   lmap.on("click", (e) => {
     if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
-    if (measure.length) { measure = []; renderMap(); }
+    // a tap on the map is a measuring point too
+    const p = { id: null, lat: Math.round(e.latlng.lat * 1e6) / 1e6, lon: Math.round(e.latlng.lng * 1e6) / 1e6, name: "Punto" };
+    measure = measure.length === 1 ? [measure[0], p] : [p];
+    renderMap();
   });
   renderMap();
 }
@@ -433,6 +437,13 @@ $("mapFull").onclick = async () => {
 };
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && mapBox().classList.contains("full")) setMapFull(false); setTimeout(() => lmap && lmap.invalidateSize(), 50); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && mapBox().classList.contains("full") && !document.fullscreenElement) setMapFull(false); });
+// brings the tapped waypoint's row into view inside the table, without moving the page away from the map (phone)
+function showRow(id) {
+  const row = $("row-" + id), box = row && row.closest(".scroll, .tablebox");
+  if (!row || !box) return;
+  const r = row.getBoundingClientRect(), b = box.getBoundingClientRect();
+  if (box.scrollHeight > box.clientHeight + 4 && (r.top < b.top || r.bottom > b.bottom)) box.scrollTop += r.top - b.top - b.height / 3;
+}
 function renderMap() {
   if (!lmap) return;
   layer.clearLayers(); arrowLines = []; drawArrows();
@@ -468,30 +479,39 @@ function renderMap() {
     arrow(drawing.pts, "#ff7a00");
     drawing.pts.forEach((p) => L.circleMarker(p, { radius: 4, color: "#ff7a00", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
   }
-  // distance between the two waypoints tapped
-  const [ma, mb] = measure.map((id) => list.find((w) => w.id === id));
-  if (measure.length === 2 && ma && mb) {
-    const d = distKm(ma, mb), cap = bearing(ma, mb);
-    L.polyline([[ma.lat, ma.lon], [mb.lat, mb.lon]], { color: "#000", weight: 6, opacity: .45, interactive: false }).addTo(layer);
-    L.polyline([[ma.lat, ma.lon], [mb.lat, mb.lon]], { color: "#fff", weight: 3, opacity: 1, interactive: false })
+  // distance and course between the two points tapped (waypoints or any spot); with one tapped waypoint, to the next one
+  const mm = measure.map((m) => m.id ? list.find((w) => w.id === m.id) || null : m).filter(Boolean);
+  const leg = (a, b, dashed) => {
+    const d = distKm(a, b), cap = bearing(a, b);
+    L.polyline([[a.lat, a.lon], [b.lat, b.lon]], { color: "#000", weight: 6, opacity: .45, interactive: false }).addTo(layer);
+    L.polyline([[a.lat, a.lon], [b.lat, b.lon]], { color: "#fff", weight: 3, opacity: 1, dashArray: dashed ? "6 6" : null, interactive: false })
       .bindTooltip(`${fmtKm(d)} · rumbo ${cap}°`, { permanent: true, direction: "center", className: "wp-lbl dist" }).addTo(layer);
-    $("scaleTxt").textContent = `${ma.name} → ${mb.name}: ${fmtKm(d)} en línea recta, rumbo ${cap}°`;
-  } else if (measure.length === 1 && ma) {
-    $("scaleTxt").textContent = `Desde ${ma.name}: toca otro waypoint para ver la distancia`;
+    return `${a.name} → ${b.name}: ${fmtKm(d)} en línea recta, rumbo ${cap}°`;
+  };
+  mm.filter((m) => !m.id).forEach((m) => L.circleMarker([m.lat, m.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
+  if (mm.length === 2) $("scaleTxt").textContent = leg(mm[0], mm[1], false) + " · toca otro sitio para empezar de nuevo";
+  else if (mm.length === 1) {
+    const a = mm[0], i = a.id ? list.findIndex((w) => w.id === a.id) : -1, nx = i >= 0 ? list[i + 1] : null;
+    $("scaleTxt").textContent = nx ? leg(a, nx, true) + " (al siguiente) · toca otro punto para medir hasta él"
+      : `Desde ${a.name}: toca otro waypoint o cualquier punto del mapa`;
   }
   list.forEach((w) => {
-    const hi = state.hi === w.id || measure.includes(w.id) || (joined && joined.has(w.id));
+    const tapWp = (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (drawing) { drawStep(); drawing.pts.push([w.lat, w.lon]); drawing.wpAt.push(w.id); renderMap(); renderDraw(); return; }
+      const me = { id: w.id };
+      if (measure.length === 1 && measure[0].id === w.id) measure = [];
+      else measure = measure.length === 1 ? [measure[0], me] : [me];
+      state.hi = w.id; renderTable(); renderMap(); showRow(w.id);
+    };
+    const hi = state.hi === w.id || measure.some((m) => m.id === w.id) || (joined && joined.has(w.id));
     const out = state.tab === "plan" && plan.sel !== null && plan.alts[plan.sel] && !plan.alts[plan.sel].ids.has(w.id);
     const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: out ? "#888" : stageColor(stageKey(w)), fillOpacity: out ? .45 : 1, opacity: out ? .5 : 1 })
       .bindTooltip(w.pts ? `${w.name} · ${w.pts}` : w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
-      .on("click", (e) => {
-        L.DomEvent.stopPropagation(e);
-        if (drawing) { drawStep(); drawing.pts.push([w.lat, w.lon]); drawing.wpAt.push(w.id); renderMap(); renderDraw(); return; }
-        if (measure.length === 1 && measure[0] === w.id) measure = [];
-        else measure = measure.length === 1 ? [measure[0], w.id] : [w.id];
-        state.hi = w.id; renderTable(); renderMap(); const row = $("row-" + w.id); if (row) row.scrollIntoView({ block: "nearest" });
-      })
+      .on("click", tapWp)
       .addTo(layer);
+    // on a phone or tablet a finger needs a bigger target than the dot
+    if (TOUCH) L.circleMarker([w.lat, w.lon], { radius: 20, stroke: false, fillOpacity: 0 }).on("click", tapWp).addTo(layer);
     if (hi) m.bringToFront();
   });
   const key = state.rallyId + "|" + state.stageFilter + "|" + list.map((w) => w.id).join(",") + "|" + trks.length;

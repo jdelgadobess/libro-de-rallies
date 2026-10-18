@@ -437,13 +437,6 @@ $("mapFull").onclick = async () => {
 };
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && mapBox().classList.contains("full")) setMapFull(false); setTimeout(() => lmap && lmap.invalidateSize(), 50); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && mapBox().classList.contains("full") && !document.fullscreenElement) setMapFull(false); });
-// brings the tapped waypoint's row into view inside the table, without moving the page away from the map (phone)
-function showRow(id) {
-  const row = $("row-" + id), box = row && row.closest(".scroll, .tablebox");
-  if (!row || !box) return;
-  const r = row.getBoundingClientRect(), b = box.getBoundingClientRect();
-  if (box.scrollHeight > box.clientHeight + 4 && (r.top < b.top || r.bottom > b.bottom)) box.scrollTop += r.top - b.top - b.height / 3;
-}
 function renderMap() {
   if (!lmap) return;
   layer.clearLayers(); arrowLines = []; drawArrows();
@@ -502,7 +495,8 @@ function renderMap() {
       const me = { id: w.id };
       if (measure.length === 1 && measure[0].id === w.id) measure = [];
       else measure = measure.length === 1 ? [measure[0], me] : [me];
-      state.hi = w.id; renderTable(); renderMap(); showRow(w.id);
+      // stay on the map: the page must not move to the table
+      const y = window.scrollY; state.hi = w.id; renderTable(); renderMap(); window.scrollTo(0, y);
     };
     const hi = state.hi === w.id || measure.some((m) => m.id === w.id) || (joined && joined.has(w.id));
     const out = state.tab === "plan" && plan.sel !== null && plan.alts[plan.sel] && !plan.alts[plan.sel].ids.has(w.id);

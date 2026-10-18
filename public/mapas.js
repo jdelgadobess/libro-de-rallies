@@ -4,6 +4,7 @@ const SQLJS = "https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/";
 const PMTILES_JS = "https://cdn.jsdelivr.net/npm/pmtiles@4.4.1/dist/pmtiles.js";
 const PROTOMAPS_JS = "https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/protomaps-leaflet.js";
 export const OFFROAD_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles";
+export const OFFROAD_ES_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-espana/espana.pmtiles";
 const $ = (id) => document.getElementById(id);
 
 /* ---------- IndexedDB: offline maps and the last copy of the data ---------- */
@@ -147,15 +148,20 @@ export function openTiles(SQL, bytes) {
   return { get, minZoom: zr[0], maxZoom: zr[1], bounds, mime, close: () => db.close() };
 }
 
-// the off-road map kept on this device, for the route planner (null if none was imported)
-let orCache = null;
-export async function offroadMap() {
+// the off-road map kept on this device that covers a point (Morocco, Spain…), for the route planner; null if none
+const orCache = new Map();
+export async function offroadMap(at) {
   const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || ""));
   if (!maps.length) return null;
-  const m = maps[0];
-  if (!orCache || orCache.id !== m.id) orCache = { id: m.id, name: m.name, ...(await openPmtiles(m.blob, m.id)) };
+  const open = async (m) => { if (!orCache.has(m.id)) orCache.set(m.id, { id: m.id, name: m.name, ...(await openPmtiles(m.blob, m.id)) }); return orCache.get(m.id); };
+  let found = null;
+  for (const m of maps) {
+    const o = await open(m), [[s, w], [n, e]] = o.bounds;
+    if (!at || (at[0] >= s && at[0] <= n && at[1] >= w && at[1] <= e)) { found = o; break; }
+  }
+  if (!found) return null;
   await script(PROTOMAPS_JS);
-  return orCache;
+  return found;
 }
 
 /* ---------- the layers on the Leaflet map ---------- */

@@ -1059,8 +1059,9 @@ $("pRun").onclick = async () => {
   try {
     msg.textContent = "Abriendo el mapa off-road…";
     plan.stage = state.stageFilter;
-    const or = await offroadMap();
-    if (!or) { msg.textContent = "Primero importa el mapa off-road de Marruecos en el paso 3 de la pestaña «Libro de ruta»."; return; }
+    const mid = [wps.reduce((t, w) => t + w.lat, 0) / wps.length, wps.reduce((t, w) => t + w.lon, 0) / wps.length];
+    const or = await offroadMap(mid);
+    if (!or) { msg.textContent = (mid[0] > 35.9 ? "Primero importa el mapa off-road de España" : "Primero importa el mapa off-road de Marruecos") + " en el paso 3 de la pestaña «Libro de ruta» (en este dispositivo)."; return; }
     const pad = 0.05, bbox = [Math.min(...wps.map((w) => w.lat)) - pad, Math.min(...wps.map((w) => w.lon)) - pad, Math.max(...wps.map((w) => w.lat)) + pad, Math.max(...wps.map((w) => w.lon)) + pad];
     const key = or.id + "|" + bbox.map((v) => v.toFixed(3)).join(",") + "|" + $("pPaths").checked;
     if (plan.graphKey !== key) {

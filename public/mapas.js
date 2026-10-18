@@ -277,7 +277,7 @@ export function setupLayers(lmap) {
     }
   }
   document.querySelectorAll("input.mapfile").forEach((inp) => inp.addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importMaps(f); }));
-  ["osmDrop", "tnDrop", "orDrop"].forEach((id) => {
+  ["orDrop"].forEach((id) => {
     const d = $(id); if (!d) return;
     d.addEventListener("dragover", (e) => { e.preventDefault(); d.classList.add("over"); });
     d.addEventListener("dragleave", () => d.classList.remove("over"));

@@ -1209,24 +1209,30 @@ $("addStart").onclick = () => {
   if (!rally()) { $("drawMsg").textContent = "Elige primero el año en el paso 1."; return; }
   if (!addStage()) { $("drawMsg").textContent = "Pon primero el nº de etapa en el paso 2: los waypoints se crean en esa etapa."; $("stageNo").classList.add("need"); $("stageNo").focus(); return; }
   if (state.stageFilter !== addStage()) pickStage(addStage());
-  adding = { made: [] }; measure = []; $("drawMsg").textContent = `Toca el mapa donde quieras cada waypoint. Se guardan en la ${stageLabel(addStage()).toLowerCase()} con el siguiente número.`;
+  adding = { made: [] }; measure = []; $("addNo").value = nextWpNo(addStage()); $("drawMsg").textContent = `Toca el mapa donde quieras cada waypoint. Se guardan en la ${stageLabel(addStage()).toLowerCase()} con el siguiente número.`;
   renderAdd(); renderMap();
 };
 $("addEnd").onclick = () => { const n = adding ? adding.made.length : 0; adding = null; $("drawMsg").textContent = n ? (n > 1 ? `Creados ${n} waypoints. Puedes editarlos o borrarlos desde la lista.` : "Creado 1 waypoint. Puedes editarlo o borrarlo desde la lista.") : ""; $("scaleHelp").textContent = "Toca dos waypoints para ver la distancia"; renderAdd(); };
+// the number after the highest one in the stage
+const nextWpNo = (st) => rallyWps().filter((w) => stageKey(w) === st).reduce((m, w) => Math.max(m, parseInt(String(w.name).match(/\d+/)?.[0] || "0", 10)), 0) + 1;
 async function addWpAt(ll) {
-  const st = addStage(), inSt = rallyWps().filter((w) => stageKey(w) === st);
-  const n = inSt.reduce((m, w) => Math.max(m, parseInt(String(w.name).match(/\d+/)?.[0] || "0", 10)), 0) + 1;
-  const d = { rallyId: state.rallyId, stage: st, name: String(n), page: "", desc: "", lat: Math.round(ll.lat * 1e6) / 1e6, lon: Math.round(ll.lng * 1e6) / 1e6, pts: null };
+  // the number is the one in the box, which then moves on to the next
+  const st = addStage(), n = parseInt($("addNo").value, 10), pts = parseInt($("addPts").value, 10);
+  if (!Number.isFinite(n) || n < 0) { $("drawMsg").textContent = "Pon el nº del waypoint en la casilla «Nº»."; $("addNo").focus(); return; }
+  if (rallyWps().some((w) => stageKey(w) === st && String(w.name) === String(n))) { $("drawMsg").textContent = `Ya hay un waypoint ${n} en la ${stageLabel(st).toLowerCase()}: cambia el número en la casilla «Nº».`; $("addNo").focus(); return; }
+  const d = { rallyId: state.rallyId, stage: st, name: String(n), page: "", desc: "", lat: Math.round(ll.lat * 1e6) / 1e6, lon: Math.round(ll.lng * 1e6) / 1e6, pts: Number.isFinite(pts) && pts > 0 ? pts : null };
   try {
     const row = must(await sb.from("waypoints").insert(wpOut({ ...d, seq: n, source: "mapa", by: state.user.email })).select().single());
     state.wps.push(wpIn(row)); if (adding) adding.made.push(row.id);
-    $("drawMsg").textContent = `Creado el waypoint ${n} en la ${stageLabel(st).toLowerCase()}. Con «✎ Editar el último» le pones nombre y puntos.`;
+    $("addNo").value = n + 1;
+    $("drawMsg").textContent = `Creado el waypoint ${n}${d.pts ? ` (${d.pts} pts)` : ""} en la ${stageLabel(st).toLowerCase()}. El siguiente será el ${n + 1}; cámbialo en «Nº» si quieres otro.`;
     renderAdd(); render();
   } catch (e) { $("drawMsg").textContent = writeErr(e); }
 }
 $("addUndo").onclick = async () => {
   const id = adding && adding.made.pop(); if (!id) return;
-  try { must(await sb.from("waypoints").delete().eq("id", id)); state.wps = state.wps.filter((w) => w.id !== id); $("drawMsg").textContent = "Borrado el último waypoint creado."; renderAdd(); render(); }
+  const gone = state.wps.find((w) => w.id === id);
+  try { must(await sb.from("waypoints").delete().eq("id", id)); state.wps = state.wps.filter((w) => w.id !== id); if (gone) $("addNo").value = gone.name; $("drawMsg").textContent = "Borrado el último waypoint creado."; renderAdd(); render(); }
   catch (e) { adding.made.push(id); $("drawMsg").textContent = writeErr(e); }
 };
 $("addEdit").onclick = () => { const w = adding && state.wps.find((x) => x.id === adding.made[adding.made.length - 1]); if (w) startEdit(w); };

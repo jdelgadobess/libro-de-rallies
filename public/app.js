@@ -544,15 +544,27 @@ function renderMap() {
     if (TOUCH) L.circleMarker([w.lat, w.lon], { radius: 20, stroke: false, fillOpacity: 0 }).on("click", tapWp).addTo(layer);
     if (hi) m.bringToFront();
   });
-  const key = state.rallyId + "|" + state.stageFilter + "|" + list.map((w) => w.id).join(",") + "|" + trks.length;
-  if (key !== fitKey) {
-    fitKey = key;
-    if (pts.length === 1) lmap.setView(pts[0], 15);
+  // a new stage takes the map to where it starts; all stages, or a route just picked, show everything.
+  // Adding or hiding waypoints doesn't move the map.
+  const key = state.rallyId + "|" + state.stageFilter;
+  if (pts.length && key !== fitKey) {
+    const forced = fitKey === ""; fitKey = key;
+    const start = !forced && state.stageFilter !== "all" ? stageStart(list, trks) : null;
+    if (start) lmap.setView(start, Math.max(13, Math.min(lmap.getZoom(), 15)));
+    else if (pts.length === 1) lmap.setView(pts[0], 15);
     else lmap.fitBounds(pts, { padding: [40, 40] });
   }
   drawArrows();
 }
 
+// where a stage starts: its start waypoint (SALIDA, DSS, START, INICIO), else the first in order, else the start of its route
+function stageStart(list, trks) {
+  const isStart = (w) => /\b(salida|dss|start|inicio)\b/i.test(`${w.name} ${w.desc || ""}`) && !/llegada|ass\b|finish|meta\b/i.test(`${w.name} ${w.desc || ""}`);
+  const w = list.find(isStart) || list[0];
+  if (w) return [w.lat, w.lon];
+  const t = trks.find((x) => x.kind !== "grabada") || trks[0];
+  return t && t.segs[0] && t.segs[0][0] ? t.segs[0][0] : null;
+}
 /* ---------- step 1: years ---------- */
 function openYearForm() {
   $("yearForm").hidden = false;

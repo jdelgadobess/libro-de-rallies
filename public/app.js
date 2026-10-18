@@ -840,9 +840,33 @@ $("tabLibro").onclick = () => setTab("libro");
 $("tabPlan").onclick = () => setTab("plan");
 $("tabMec").onclick = () => setTab("mec");
 $("tabCar").onclick = () => setTab("car");
+// the proposals are kept per stage, so the phone or tablet sees the ones calculated on the computer
+const planKey = () => "plan:" + state.rallyId + ":" + state.stageFilter;
+async function savePlan(note) {
+  if (!canEdit() || !plan.alts.length) return;
+  const alts = plan.alts.map(({ ids, wps, ...a }) => ({ ...a, wpIds: wps.map((w) => w.id) }));
+  const row = { rally_id: state.rallyId, stage: state.stageFilter, alts, note, created_by: state.user.email, created_at: new Date().toISOString() };
+  idb.put("kv", row, planKey()).catch(() => {});
+  const { error } = await sb.from("plans").upsert(row);
+  if (error) console.warn("plans", error.message);
+}
+async function loadPlan() {
+  if (state.stageFilter === "all" || !state.rallyId) return;
+  const key = planKey(), stage = state.stageFilter;
+  let row = null;
+  const { data, error } = await sb.from("plans").select("*").eq("rally_id", state.rallyId).eq("stage", stage).maybeSingle();
+  if (!error && data) { row = data; idb.put("kv", data, key).catch(() => {}); }
+  else if (error) { try { row = await idb.get("kv", key); } catch (e) {} }
+  if (!row || !row.alts || !row.alts.length || plan.busy || plan.alts.length || planKey() !== key) return;
+  const byId = new Map(rallyWps().map((w) => [w.id, w]));
+  plan.alts = row.alts.map((a) => { const wps = a.wpIds.map((id) => byId.get(id)).filter(Boolean); return { ...a, wps, ids: new Set(wps.map((w) => w.id)) }; });
+  plan.sel = 0;
+  $("pMsg").textContent = `Propuestas calculadas el ${new Date(row.created_at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}. Pulsa «Calcular» para rehacerlas.` + (row.note ? " " + row.note.replace(/^\d+ propuestas[^.]*\.\s*/, "") : "");
+  renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
+}
 function renderPlan() {
   if (state.tab !== "plan") return;
-  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; }
+  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; loadPlan(); }
   const wps = mapWps();
   $("pScope").textContent = state.stageFilter === "all"
     ? "Elige una etapa en el paso 2."
@@ -920,6 +944,7 @@ $("pRun").onclick = async () => {
     msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints, de ${st ? st.name + (st.desc ? " (" + st.desc + ")" : "") : wps[0].name + " (no encuentro la SALIDA)"} a ${fin ? fin.name + (fin.desc ? " (" + fin.desc + ")" : "") : wps[wps.length - 1].name + " (no encuentro la LLEGADA)"}.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
     renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
     await satFill(wps, msg);
+    await savePlan(msg.textContent);
   } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); }
   finally { plan.busy = false; renderPlan(); }
 };

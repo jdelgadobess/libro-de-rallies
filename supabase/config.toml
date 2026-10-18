@@ -10,3 +10,5 @@ verify_jwt = false
 verify_jwt = true
 [functions.leer-ficha]
 verify_jwt = true
+[functions.trazar-satelite]
+verify_jwt = true

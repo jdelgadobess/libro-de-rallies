@@ -2,7 +2,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { setupLayers, idb, offroadMap } from "./mapas.js";
 import { setupMecanica } from "./mecanica.js";
 import { setupCoches } from "./coches.js";
-import { buildGraph, matrix, proposals, geometry, nearRoute, addTo } from "./rutas.js";
+import { buildGraph, matrix, proposals, geometry, nearRoute, addTo, satImage, meters } from "./rutas.js";
 
 const CFG = window.APP_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
@@ -433,7 +433,10 @@ function renderMap() {
       .bindTooltip(a.name).on("click", () => { plan.sel = i; renderPlan(); renderMap(); }).addTo(layer);
     if (on) arrow(a.pts, a.color);
     // stretches with no way on the map: drawn as a dotted line so they are not taken for a track
-    if (on) a.gaps.forEach(([p, q]) => {
+    if (on) (a.sat || []).forEach(({ line, note }) => {
+      L.polyline(line, { color: "#fff", weight: 2, dashArray: "8 6", opacity: 1 }).bindTooltip("Pista vista en el satélite (no está en el mapa)" + (note ? ": " + note : "")).addTo(layer);
+    });
+    if (on) a.gaps.forEach(({ A: p, B: q }) => {
       L.polyline([p, q], { color: "#fff", weight: 7, opacity: .9, interactive: false }).addTo(layer);
       L.polyline([p, q], { color: "#111", weight: 4, dashArray: "1 9", lineCap: "round" }).bindTooltip("Sin camino en el mapa: tramo campo a través").addTo(layer);
     });
@@ -799,7 +802,8 @@ function renderPlan() {
     t.append(sw, a.name);
     const d = document.createElement("div"); d.className = "d";
     d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.extra > 0 ? ` (${a.extra} más porque la ruta pasa al lado)` : "") + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista` +
-      (a.gapKm >= 0.3 ? ` (${a.gapKm.toFixed(1)} km sin ningún camino en el mapa, en línea de puntos)` : "");
+      (a.satKm ? ` · ${a.satKm.toFixed(1)} km por pistas vistas en el satélite` : "") +
+      (a.gapKm >= 0.3 ? ` (${a.gapKm.toFixed(1)} km sin ningún camino, en línea de puntos)` : "");
     const d2 = document.createElement("div"); d2.className = "d"; d2.textContent = a.wps.map((w) => w.name).join(" → ");
     const b = document.createElement("div"); b.className = "btns";
     const sv = document.createElement("button"); sv.type = "button"; sv.className = "ghost"; sv.textContent = "Guardar como track"; sv.dataset.edit = "";
@@ -861,9 +865,52 @@ $("pRun").onclick = async () => {
     const far = sn.filter((s) => s.d > 1000).length;
     msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints, de ${st ? st.name + (st.desc ? " (" + st.desc + ")" : "") : wps[0].name + " (no encuentro la SALIDA)"} a ${fin ? fin.name + (fin.desc ? " (" + fin.desc + ")" : "") : wps[wps.length - 1].name + " (no encuentro la LLEGADA)"}.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
     renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
+    await satFill(wps, msg);
   } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); }
   finally { plan.busy = false; renderPlan(); }
 };
+
+// where the map has no way between two waypoints, look at the satellite image for a clear track and follow it
+async function satFill(wps, msg) {
+  const base = msg.textContent, same = (p, q) => p[0] === q[0] && p[1] === q[1];
+  const todo = new Map();
+  plan.alts.forEach((a) => a.gaps.forEach((g) => { if (meters(g.A, g.B) >= 300) todo.set(Math.min(g.a, g.b) + "-" + Math.max(g.a, g.b), g); }));
+  if (!todo.size) return;
+  const found = new Map(), keys = [...todo.keys()]; let done = 0, failed = "";
+  const work = async () => {
+    for (let k; (k = keys.shift()) !== undefined;) {
+      msg.textContent = `${base} Buscando pistas en el satélite donde el mapa no tiene camino… ${done + 1} de ${todo.size}`;
+      const g = todo.get(k);
+      try {
+        const im = await satImage(g.A, g.B);
+        const { data, error } = await sb.functions.invoke("trazar-satelite", { body: { image: im.image, width: im.width, height: im.height, a: im.a, b: im.b, mpp: im.mpp } });
+        if (error) { let m = ""; try { m = (await error.context.json()).error; } catch (er) {} throw new Error(m || "no responde"); }
+        if (data.encontrado && data.claridad !== "baja" && data.puntos.length >= 2) {
+          const line = data.puntos.map((p) => im.toLL(p.x, p.y));
+          found.set(k, { from: g.a, line: [g.A, ...line, g.B], note: data.nota });
+        }
+      } catch (er) { failed = er.message || String(er); }
+      done++;
+    }
+  };
+  await Promise.all([work(), work()]);
+  plan.alts.forEach((a) => {
+    a.sat = []; a.satKm = 0;
+    a.gaps = a.gaps.filter((g) => {
+      const f = found.get(Math.min(g.a, g.b) + "-" + Math.max(g.a, g.b)); if (!f) return true;
+      const line = f.from === g.a ? f.line : [...f.line].reverse();
+      const i = a.pts.findIndex((p, j) => same(p, g.A) && a.pts[j + 1] && same(a.pts[j + 1], g.B)); if (i < 0) return true;
+      a.pts.splice(i, 2, ...line);
+      let len = 0; for (let j = 1; j < line.length; j++) len += meters(line[j - 1], line[j]);
+      a.km += (len - meters(g.A, g.B)) / 1000; a.satKm += len / 1000; a.sat.push({ line, note: f.note });
+      return false;
+    });
+    a.gapKm = a.gaps.reduce((t, g) => t + meters(g.A, g.B), 0) / 1000;
+  });
+  msg.textContent = base + (found.size ? ` En ${found.size} de ${todo.size} tramos sin camino en el mapa he seguido una pista que se ve en el satélite (línea blanca discontinua): compruébala.`
+    : ` En los ${todo.size} tramos sin camino en el mapa no se ve ninguna pista clara en el satélite.`) + (failed ? ` Algún tramo no se pudo mirar (${failed}).` : "");
+  renderPlan(); renderMap();
+}
 
 /* ---------- drawing a route by hand on the map ---------- */
 let drawing = null;

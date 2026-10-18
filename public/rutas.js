@@ -338,8 +338,44 @@ export function geometry(g, wps, sn, seq, avoid = null) {
     if (path) {
       off += sa.d + sb.d;
       for (let i = 0; i < path.length; i++) { const p = [Math.round(g.lat[path[i]] * 1e6) / 1e6, Math.round(g.lon[path[i]] * 1e6) / 1e6]; if (i) road += meters(pts[pts.length - 1], p); add(p); }
-    } else { off += straight; gaps.push([A, B]); }
+    } else { off += straight; gaps.push({ A, B, a, b }); }
     add(B);
   }
-  return { pts, km: (road + off) / 1000, offKm: off / 1000, gapKm: gaps.reduce((t, [a, b]) => t + meters(a, b), 0) / 1000, gaps, used };
+  return { pts, km: (road + off) / 1000, offKm: off / 1000, gapKm: gaps.reduce((t, x) => t + meters(x.A, x.B), 0) / 1000, gaps, used };
+}
+
+/* ---------- satellite image between two points, for looking for a track the map lacks ---------- */
+const SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
+const tileImg = (z, x, y) => new Promise((ok) => {
+  const im = new Image(); im.crossOrigin = "anonymous";
+  im.onload = () => ok(im); im.onerror = () => ok(null);
+  im.src = `${SAT}${z}/${y}/${x}`;
+});
+// JPEG of the area around A–B, with A (green) and B (red) marked, and a function from image pixels back to [lat, lon]
+export async function satImage(A, B, maxPx = 1400) {
+  const len = meters(A, B), m = Math.max(300, len * 0.25);
+  const dLat = m / 111320, dLon = m / (111320 * Math.cos(A[0] * rad));
+  const n = Math.max(A[0], B[0]) + dLat, s = Math.min(A[0], B[0]) - dLat, w = Math.min(A[1], B[1]) - dLon, e = Math.max(A[1], B[1]) + dLon;
+  let z = 17, x0, y0, x1, y1;
+  for (; z > 12; z--) {
+    x0 = lon2tile(w, z) * 256; x1 = lon2tile(e, z) * 256; y0 = lat2tile(n, z) * 256; y1 = lat2tile(s, z) * 256;
+    if (Math.max(x1 - x0, y1 - y0) <= maxPx) break;
+  }
+  const W = Math.round(x1 - x0), H = Math.round(y1 - y0);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#777"; ctx.fillRect(0, 0, W, H);
+  const jobs = [];
+  for (let tx = Math.floor(x0 / 256); tx <= Math.floor(x1 / 256); tx++) for (let ty = Math.floor(y0 / 256); ty <= Math.floor(y1 / 256); ty++)
+    jobs.push(tileImg(z, tx, ty).then((im) => { if (im) ctx.drawImage(im, tx * 256 - x0, ty * 256 - y0); }));
+  await Promise.all(jobs);
+  const px = (p) => [lon2tile(p[1], z) * 256 - x0, lat2tile(p[0], z) * 256 - y0];
+  const a = px(A), b = px(B);
+  [[a, "#00c853"], [b, "#ff1744"]].forEach(([p, col]) => { ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, 7); ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke(); });
+  let url;
+  try { url = c.toDataURL("image/jpeg", 0.85); } catch (er) { throw new Error("El navegador no deja leer la imagen de satélite."); }
+  const toLL = (x, y) => {
+    const X = (x + x0) / 256, Y = (y + y0) / 256, N = Math.PI - 2 * Math.PI * Y / 2 ** z;
+    return [Math.round(Math.atan(Math.sinh(N)) / rad * 1e6) / 1e6, Math.round((X / 2 ** z * 360 - 180) * 1e6) / 1e6];
+  };
+  return { image: { mediaType: "image/jpeg", data: url.slice(url.indexOf(",") + 1) }, width: W, height: H, a, b, mpp: 156543.03 * Math.cos(A[0] * rad) / 2 ** z, toLL };
 }

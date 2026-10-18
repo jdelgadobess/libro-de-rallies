@@ -1,0 +1,17 @@
+{
+  "name": "Libro de Rallies",
+  "short_name": "Rallies",
+  "description": "Roadbook, waypoints, rutas, mecánica y coches para los rallies en Marruecos.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3ead8",
+  "theme_color": "#c1272d",
+  "icons": [
+    { "src": "img/icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "img/icono-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "img/icono-mask.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

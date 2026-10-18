@@ -1,0 +1,43 @@
+name: Mapa off-road de España
+
+# Builds espana.pmtiles (peninsula and Balearic Islands) from the latest OpenStreetMap build of Protomaps,
+# like the Morocco one, and publishes it as a release to download once and import in the program.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramienta pmtiles
+        run: |
+          gh release download -R protomaps/go-pmtiles --pattern '*Linux_x86_64.tar.gz' -O pmtiles.tgz
+          tar xzf pmtiles.tgz pmtiles && ./pmtiles version
+      - name: Recortar España
+        run: |
+          for d in 0 1 2 3 4 5 6 7 8 9 10; do
+            D=$(date -u -d "$d days ago" +%Y%m%d)
+            if curl -sfI "https://build.protomaps.com/$D.pmtiles" >/dev/null; then break; fi
+          done
+          echo "Usando $D"; echo "FECHA=$D" >> $GITHUB_ENV
+          ./pmtiles extract "https://build.protomaps.com/$D.pmtiles" espana.pmtiles --bbox=-9.6,35.8,4.6,44.0 --maxzoom=14 --download-threads=8
+          ls -la espana.pmtiles
+          # a release file can't pass 2 GB: if it does, one zoom level less (tracks and paths are still there)
+          if [ $(stat -c %s espana.pmtiles) -gt 2000000000 ]; then
+            rm espana.pmtiles
+            ./pmtiles extract "https://build.protomaps.com/$D.pmtiles" espana.pmtiles --bbox=-9.6,35.8,4.6,44.0 --maxzoom=13 --download-threads=8
+          fi
+          ./pmtiles show espana.pmtiles
+          ls -la espana.pmtiles
+      - name: Publicar
+        run: |
+          MB=$(( $(stat -c %s espana.pmtiles) / 1048576 ))
+          gh release delete mapa-espana -y --cleanup-tag || true
+          gh release create mapa-espana espana.pmtiles --title "Mapa off-road de España" \
+            --notes "Península y Baleares. Datos de OpenStreetMap ($FECHA) vía Protomaps, $MB MB. Descárgalo e impórtalo en el paso 3 del programa: «Importar mapa off-road»."

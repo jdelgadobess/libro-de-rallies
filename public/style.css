@@ -317,3 +317,7 @@ body:not(.tab-rec) #recTab { display: none }
 .recs h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .04em; font-size: 1.2rem; margin: 18px 0 6px }
 .recs h4 { margin: 12px 0 4px; font-size: .95rem }
 .recs .tracks li select { padding: 4px 6px; font-size: .8rem; width: auto }
+.measure-ctl { display: flex; gap: 6px }
+.measure-ctl[hidden] { display: none !important }
+.measure-ctl button { background: #fff; color: #111; border: 2px solid rgba(0,0,0,.35); border-radius: 6px; padding: 9px 14px; font: 700 .95rem var(--sans, system-ui); box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer }
+.measure-ctl button:last-child { background: #c1272d; color: #fff; border-color: #8f1b14 }

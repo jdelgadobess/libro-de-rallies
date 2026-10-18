@@ -414,6 +414,16 @@ function loadMaps() {
   lmap.createPane("arrows").style.zIndex = 450;
   arrowLayer = L.layerGroup().addTo(lmap);
   lmap.on("zoomend moveend", drawArrows);
+  // big buttons on the map while measuring: go back one point, or start from scratch
+  const Clear = L.Control.extend({ options: { position: "topright" }, onAdd() {
+    const d = L.DomUtil.create("div", "measure-ctl"); d.id = "measureCtl"; d.hidden = true;
+    d.innerHTML = '<button type="button" id="measureBack">↶ Atrás</button><button type="button" id="measureClear">✕ Borrar medida</button>';
+    L.DomEvent.disableClickPropagation(d);
+    d.querySelector("#measureBack").onclick = () => { measure = measure.slice(0, -1); renderMap(); };
+    d.querySelector("#measureClear").onclick = () => { measure = []; state.hi = null; renderTable(); renderMap(); };
+    return d;
+  } });
+  new Clear().addTo(lmap);
   lmap.on("click", (e) => {
     if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
     // a tap on the map is a measuring point too
@@ -474,6 +484,7 @@ function renderMap() {
   }
   // distance and course between the two points tapped (waypoints or any spot); with one tapped waypoint, to the next one
   const mm = measure.map((m) => m.id ? list.find((w) => w.id === m.id) || null : m).filter(Boolean);
+  if ($("measureCtl")) $("measureCtl").hidden = !mm.length || !!drawing;
   const leg = (a, b, dashed) => {
     const d = distKm(a, b), cap = bearing(a, b);
     L.polyline([[a.lat, a.lon], [b.lat, b.lon]], { color: "#000", weight: 6, opacity: .45, interactive: false }).addTo(layer);

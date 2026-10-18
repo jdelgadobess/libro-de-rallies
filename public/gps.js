@@ -11,7 +11,23 @@ const MIN_STEP = 8, MAX_ACC = 60, GAP_MS = 120000; // metres between saved point
 const fmtTime = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min ${String(s % 60).padStart(2, "0")} s`; };
 const kmOf = (segs) => segs.reduce((t, s) => { for (let i = 1; i < s.length; i++) t += meters(s[i - 1], s[i]); return t; }, 0) / 1000;
 
-export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove }) {
+// distance in metres from a point to a route, and the nearest point on it (flat projection: fine at these distances)
+function nearestOn(p, segs) {
+  const kx = Math.cos(p[0] * rad) * R * rad, ky = R * rad;
+  let best = { d: Infinity, at: null };
+  for (const s of segs) for (let i = 0; i < s.length; i++) {
+    const a = s[i], b = s[i + 1] || a;
+    const ax = (a[1] - p[1]) * kx, ay = (a[0] - p[0]) * ky, bx = (b[1] - p[1]) * kx, by = (b[0] - p[0]) * ky;
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    const x = ax + t * dx, y = ay + t * dy, d = Math.hypot(x, y);
+    if (d < best.d) best = { d, at: [p[0] + y / ky, p[1] + x / kx] };
+  }
+  return best;
+}
+const say = (t) => { try { if (!("speechSynthesis" in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = "es-ES"; u.rate = 1; speechSynthesis.speak(u); } catch (e) {} };
+
+export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes }) {
   const layer = L.layerGroup().addTo(map), recLayer = L.layerGroup().addTo(map);
   let watch = null, follow = true, last = null, rec = null, wake = null, dot = null, ring = null, head = null, recLine = null, pendingTry = false;
   let keepUntil = 0; // an important message stays a few seconds before the accuracy readout replaces it
@@ -50,7 +66,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
 
   function onPos(p) {
-    last = p; draw(p); onMove(p.coords.latitude, p.coords.longitude);
+    last = p; draw(p); onMove(p.coords.latitude, p.coords.longitude); checkRoute(p);
     const speed = p.coords.speed ? ` · ${Math.round(p.coords.speed * 3.6)} km/h` : "";
     msg(`Precisión ±${Math.round(p.coords.accuracy)} m${speed}`);
     if (rec && p.coords.accuracy <= MAX_ACC) {
@@ -151,6 +167,61 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     else { follow = false; ui(); }
   };
   map.on("dragstart", () => { if (watch !== null && follow) { follow = false; ui(); } });
+  /* ---------- following a route: a warning when I leave it by more than the metres chosen ---------- */
+  let fol = null; // { route, thr, off, quiet, lastWarn, ownRec }
+  const folLayer = L.layerGroup().addTo(map);
+  const banner = document.createElement("div"); banner.className = "offroute"; banner.hidden = true;
+  banner.innerHTML = '<span id="offTxt"></span><button type="button" id="offOk">OK, no pasa nada</button>';
+  L.DomEvent.disableClickPropagation(banner); map.getContainer().append(banner);
+  banner.querySelector("#offOk").onclick = () => { if (fol) { fol.quiet = true; showOff(fol.lastD); say("De acuerdo"); } };
+  function showOff(d) {
+    banner.hidden = !fol || !fol.off;
+    banner.classList.toggle("quiet", !!(fol && fol.quiet));
+    banner.querySelector("#offTxt").textContent = fol && fol.quiet ? `Fuera de la ruta: ${Math.round(d)} m (sin avisos hasta que vuelvas)` : `⚠ Te estás desviando: ${Math.round(d)} m de la ruta`;
+  }
+  function followUi() {
+    $("followBtn").textContent = fol ? "⏹ Terminar ruta" : "▶ Iniciar ruta";
+    $("followBtn").className = fol ? "warn" : "hl";
+    $("followSel").disabled = !!fol;
+    $("followInfo").textContent = fol ? `Siguiendo «${fol.route.name}» · aviso a ${fol.thr} m` : "";
+  }
+  function checkRoute(p) {
+    if (!fol || p.coords.accuracy > MAX_ACC) return;
+    const here = [p.coords.latitude, p.coords.longitude], n = nearestOn(here, fol.route.segs);
+    if (!n.at) return;
+    fol.lastD = n.d; folLayer.clearLayers();
+    if (n.d > fol.thr) {
+      L.polyline([here, n.at], { color: "#c62828", weight: 4, dashArray: "8 6", interactive: false })
+        .bindTooltip(`${Math.round(n.d)} m a la ruta`, { permanent: true, direction: "center", className: "wp-lbl dist" }).addTo(folLayer);
+      L.circleMarker(n.at, { radius: 6, color: "#fff", weight: 2, fillColor: "#c62828", fillOpacity: 1, interactive: false }).addTo(folLayer);
+      if (!fol.off) { fol.off = true; fol.quiet = false; fol.lastWarn = 0; }
+      if (!fol.quiet && Date.now() - fol.lastWarn > 45000) {
+        fol.lastWarn = Date.now(); say(`Te estás desviando. ${Math.round(n.d)} metros de la ruta`);
+        try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch (e) {}
+      }
+      showOff(n.d);
+    } else if (fol.off && n.d <= fol.thr * 0.7) {
+      fol.off = false; fol.quiet = false; showOff(0); say("De nuevo en la ruta");
+    } else if (fol.off) showOff(n.d);
+  }
+  function startFollow() {
+    const r = routes().find((x) => x.key === $("followSel").value);
+    if (!r) { msg("Esta etapa no tiene ninguna ruta que seguir: dibuja una, haz una propuesta o importa un track.", true); return; }
+    const thr = Math.max(10, parseInt($("followM").value, 10) || 50);
+    fol = { route: { name: r.name, segs: r.segs.filter((s) => s.length) }, thr, off: false, quiet: false, lastWarn: 0, ownRec: false };
+    say(`Iniciando ruta. Te aviso si te desvías más de ${thr} metros`);
+    follow = true; startWatch();
+    if (!rec && canEdit() && stage()) { fol.ownRec = true; startRec(false); }
+    const all = fol.route.segs.flat(); if (all.length > 1) map.fitBounds(all, { padding: [30, 30] });
+    followUi(); if (last) checkRoute(last);
+  }
+  function stopFollow() {
+    const own = fol && fol.ownRec; fol = null; folLayer.clearLayers(); showOff(0); followUi(); say("Ruta terminada");
+    if (own && rec) stopRec();
+  }
+  $("followBtn").onclick = () => (fol ? stopFollow() : startFollow());
+  followUi();
+
   // distance and course from where I am to any waypoint or spot tapped next
   function measureHere() {
     if (!last) { msg("Aún no tengo tu posición: espera a que salga el punto azul.", true); return; }

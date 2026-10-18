@@ -427,7 +427,7 @@ function loadMaps() {
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
   setupLayers(lmap);
   setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
-    onMeasure: gpsMeasure, onMove: (lat, lon) => {
+    onMeasure: gpsMeasure, routes: followRoutes, onMove: (lat, lon) => {
       // measuring from where I am: the start follows the GPS, redrawn every few seconds
       const g = measure[0]; if (!g || !g.gps) return;
       g.lat = Math.round(lat * 1e6) / 1e6; g.lon = Math.round(lon * 1e6) / 1e6;
@@ -849,8 +849,24 @@ function renderRecStage() {
   st.forEach((k) => sel.append(new Option(`${stageLabel(k)} (${rallyWps().filter((w) => stageKey(w) === k).length} WP)`, k)));
   sel.value = want;
 }
+// the routes the GPS can follow in the stage being recorded: its tracks, the options drawn and the planner's proposals
+function followRoutes() {
+  const st = $("recStage").value || (state.stageFilter !== "all" ? state.stageFilter : "");
+  const out = rallyTracks().filter((t) => stageKey(t) === st && t.kind !== "grabada").map((t) => ({ key: "t" + t.id, name: t.name, segs: t.segs }));
+  if (plan.stage === st) plan.alts.forEach((a, i) => out.push({ key: "p" + i, name: `Propuesta ${i + 1}: ${a.name}`, segs: [a.pts] }));
+  rallyTracks().filter((t) => stageKey(t) === st && t.kind === "grabada").forEach((t) => out.push({ key: "t" + t.id, name: "⏺ " + t.name, segs: t.segs }));
+  return out;
+}
+function renderFollow() {
+  const sel = $("followSel"); if (!sel || sel.disabled) return;
+  const list = followRoutes(), was = sel.value; sel.textContent = "";
+  if (!list.length) sel.append(new Option("Esta etapa no tiene rutas", ""));
+  list.forEach((r) => sel.append(new Option(r.name, r.key)));
+  sel.value = list.some((r) => r.key === was) ? was : list.length ? list[0].key : "";
+  $("followBtn").disabled = !list.length && !sel.disabled;
+}
 function renderRecorded() {
-  renderRecStage();
+  renderRecStage(); renderFollow();
   const list = rallyTracks().filter((t) => t.kind === "grabada").sort((a, b) => String(b.created).localeCompare(String(a.created)));
   $("recBox").hidden = !list.length;
   $("recSum").textContent = `Rutas grabadas (${list.length})`;
@@ -1530,3 +1546,5 @@ $("memberForm").addEventListener("submit", async (e) => {
 });
 // picking where to record also shows that stage, with its waypoints
 $("recStage").onchange = (e) => { if (e.target.value) pickStage(e.target.value); };
+try { const m = localStorage.getItem("rally.followM"); if (m) $("followM").value = m; } catch (e) {}
+$("followM").addEventListener("change", () => { try { localStorage.setItem("rally.followM", $("followM").value); } catch (e) {} });

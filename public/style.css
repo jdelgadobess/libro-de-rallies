@@ -309,6 +309,12 @@ body.mapfull { overflow: hidden }
 .gpsbar select { padding: 5px 8px; font-size: .85rem; max-width: 14em }
 .gpsbar .rec { font: 700 .85rem var(--mono); color: #c2185b }
 .gpsbar .msg { font-size: .8rem }
+.followbar label { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem }
+.followbar input { width: 5em; padding: 5px 6px }
+.offroute { position: absolute; z-index: 1000; top: 10px; left: 50%; transform: translateX(-50%); background: #c62828; color: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.35); display: flex; gap: 12px; align-items: center; font-weight: 700; max-width: calc(100% - 120px) }
+.offroute.quiet { background: #6d4c41; font-weight: 500 }
+.offroute button { background: #fff; color: #c62828; border: 0; padding: 8px 12px; border-radius: 8px; font-weight: 700; white-space: nowrap }
+.offroute.quiet button { display: none }
 .recbox { padding: 6px 12px; border-bottom: 1px solid var(--line) }
 .recbox summary { cursor: pointer; font-weight: 700; font-size: .9rem }
 .recbox ul { margin-top: 6px }

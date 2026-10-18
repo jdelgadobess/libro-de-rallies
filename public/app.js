@@ -432,6 +432,11 @@ function renderMap() {
     L.polyline(a.pts, { color: a.color, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
       .bindTooltip(a.name).on("click", () => { plan.sel = i; renderPlan(); renderMap(); }).addTo(layer);
     if (on) arrow(a.pts, a.color);
+    // stretches with no way on the map: drawn as a dotted line so they are not taken for a track
+    if (on) a.gaps.forEach(([p, q]) => {
+      L.polyline([p, q], { color: "#fff", weight: 7, opacity: .9, interactive: false }).addTo(layer);
+      L.polyline([p, q], { color: "#111", weight: 4, dashArray: "1 9", lineCap: "round" }).bindTooltip("Sin camino en el mapa: tramo campo a través").addTo(layer);
+    });
   });
   if (drawing) {
     L.polyline(drawing.pts, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(layer);
@@ -793,7 +798,8 @@ function renderPlan() {
     const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = a.color;
     t.append(sw, a.name);
     const d = document.createElement("div"); d.className = "d";
-    d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.extra > 0 ? ` (${a.extra} más porque la ruta pasa al lado)` : "") + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista`;
+    d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.extra > 0 ? ` (${a.extra} más porque la ruta pasa al lado)` : "") + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista` +
+      (a.gapKm >= 0.3 ? ` (${a.gapKm.toFixed(1)} km sin ningún camino en el mapa, en línea de puntos)` : "");
     const d2 = document.createElement("div"); d2.className = "d"; d2.textContent = a.wps.map((w) => w.name).join(" → ");
     const b = document.createElement("div"); b.className = "btns";
     const sv = document.createElement("button"); sv.type = "button"; sv.className = "ghost"; sv.textContent = "Guardar como track"; sv.dataset.edit = "";
@@ -835,7 +841,7 @@ $("pRun").onclick = async () => {
     const mk = (p, geo, name) => {
       const list = p.seq.map((i) => wps[i]);
       const keep = Math.max(2, Math.min(wps.length, Math.round(wps.length * share)));
-      return { name, pts: geo.pts, km: geo.km, offKm: geo.offKm, wps: list, ids: new Set(list.map((w) => w.id)), sum: sumPts(list), of: wps.length, extra: list.length - keep };
+      return { name, pts: geo.pts, km: geo.km, offKm: geo.offKm, gaps: geo.gaps, gapKm: geo.gapKm, wps: list, ids: new Set(list.map((w) => w.id)), sum: sumPts(list), of: wps.length, extra: list.length - keep };
     };
     const detour = Math.max(0, parseFloat(String($("pNear").value).replace(",", ".")) || 0) * 1000;
     const props = proposals(D, wps, share, detour), alts = [];

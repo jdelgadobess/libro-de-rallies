@@ -18,7 +18,7 @@ function costOf(p, paths) {
   if (k === "highway" || k === "major_road") return 1;
   if (k === "minor_road") return 1.02;
   if (d === "track") return 1.1;
-  if (k === "path") return paths ? 1.8 : null;
+  if (k === "path") return paths ? 1.4 : null;
   if (k === "other") return 1.1;
   return null;
 }
@@ -157,7 +157,9 @@ export function dijkstra(g, from, targets, avoid = null) {
 }
 
 /* ---------- choosing and ordering the waypoints ---------- */
-const OFF = 2.5; // a metre off the map's ways counts like 2.5 metres of track
+const OFF = 2.5; // a metre off the map's ways counts like 2.5 metres of track (reaching a waypoint from the nearest way)
+// crossing open country between two waypoints is a last resort: only when the ways are more than this many times longer
+const NOWAY = 12;
 
 // cost matrix between waypoints, with the snapped nodes
 export async function matrix(g, wps, progress = () => {}) {
@@ -168,7 +170,7 @@ export async function matrix(g, wps, progress = () => {}) {
     const { dist } = sn[i].node >= 0 ? dijkstra(g, sn[i].node, targets) : { dist: null };
     for (let j = 0; j < n; j++) {
       if (i === j) continue;
-      const straight = meters([wps[i].lat, wps[i].lon], [wps[j].lat, wps[j].lon]) * OFF * 1.2;
+      const straight = meters([wps[i].lat, wps[i].lon], [wps[j].lat, wps[j].lon]) * NOWAY;
       const road = dist && sn[j].node >= 0 ? sn[i].d * OFF + dist[sn[j].node] + sn[j].d * OFF : Infinity;
       D[i][j] = Math.min(road, straight);
     }
@@ -319,7 +321,7 @@ export function geometry(g, wps, sn, seq, avoid = null) {
     for (let e = g.off[v]; e < g.off[v + 1]; e++) if (g.to[e] === u) used[e] = 1;
   };
   const pts = [], add = (p) => { const q = pts[pts.length - 1]; if (!q || q[0] !== p[0] || q[1] !== p[1]) pts.push(p); };
-  let road = 0, off = 0;
+  let road = 0, off = 0; const gaps = [];
   for (let k = 1; k < seq.length; k++) {
     const a = seq[k - 1], b = seq[k], A = [wps[a].lat, wps[a].lon], B = [wps[b].lat, wps[b].lon];
     const sa = sn[a], sb = sn[b];
@@ -327,7 +329,7 @@ export function geometry(g, wps, sn, seq, avoid = null) {
     let path = null;
     if (sa.node >= 0 && sb.node >= 0) {
       const { dist, prev } = dijkstra(g, sa.node, [sb.node], avoid);
-      if (dist[sb.node] < Infinity && sa.d * OFF + dist[sb.node] + sb.d * OFF <= straight * OFF * 1.2 * (avoid ? 1.8 : 1)) {
+      if (dist[sb.node] < Infinity && sa.d * OFF + dist[sb.node] + sb.d * OFF <= straight * NOWAY * (avoid ? 1.8 : 1)) {
         path = []; for (let u = sb.node; u !== -1; u = prev[u]) path.push(u); path.reverse();
         for (let i = 1; i < path.length; i++) mark(path[i - 1], path[i]);
       }
@@ -336,8 +338,8 @@ export function geometry(g, wps, sn, seq, avoid = null) {
     if (path) {
       off += sa.d + sb.d;
       for (let i = 0; i < path.length; i++) { const p = [Math.round(g.lat[path[i]] * 1e6) / 1e6, Math.round(g.lon[path[i]] * 1e6) / 1e6]; if (i) road += meters(pts[pts.length - 1], p); add(p); }
-    } else off += straight;
+    } else { off += straight; gaps.push([A, B]); }
     add(B);
   }
-  return { pts, km: (road + off) / 1000, offKm: off / 1000, used };
+  return { pts, km: (road + off) / 1000, offKm: off / 1000, gapKm: gaps.reduce((t, [a, b]) => t + meters(a, b), 0) / 1000, gaps, used };
 }

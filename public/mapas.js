@@ -210,6 +210,8 @@ export function setupLayers(lmap) {
       img.src = url; return img;
     },
   });
+  // the satellite sits on top: with a tracks map just turned on, it goes off so the map is seen
+  const satOff = () => { if (pref.sat) { pref.sat = false; save(); apply(); } };
   async function turnOn(m, fit) {
     if (open.has(m.id)) return open.get(m.id);
     msg(`Abriendo ${m.name}…`);
@@ -233,12 +235,17 @@ export function setupLayers(lmap) {
     const box = $("lyFiles"); box.textContent = "";
     let maps = [];
     try { maps = await idb.all("maps"); } catch (e) { msg("Este navegador no deja guardar mapas sin conexión."); return; }
+    if (!maps.some((m) => /\.pmtiles$/i.test(m.file || ""))) {
+      const p = document.createElement("span"); p.className = "msg";
+      p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd). Descárgalo e impórtalo en el paso 3, en «Importar mapa off-road».";
+      box.append(p);
+    }
     maps.sort((a, b) => a.name.localeCompare(b.name)).forEach((m) => {
       const l = document.createElement("label"); l.className = "chk";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = pref.on.includes(m.id);
       cb.onchange = async () => {
         pref.on = pref.on.filter((x) => x !== m.id); if (cb.checked) pref.on.push(m.id); save();
-        if (cb.checked) { try { await turnOn(m, true); } catch (e) { cb.checked = false; pref.on = pref.on.filter((x) => x !== m.id); save(); msg(`${m.name}: ${e.message}`); } }
+        if (cb.checked) { try { await turnOn(m, true); satOff(); } catch (e) { cb.checked = false; pref.on = pref.on.filter((x) => x !== m.id); save(); msg(`${m.name}: ${e.message}`); } }
         else { turnOff(m.id); msg(""); }
       };
       const rm = document.createElement("button"); rm.type = "button"; rm.className = "ghost x"; rm.textContent = "✕"; rm.title = "Quitar este mapa del dispositivo";
@@ -264,8 +271,8 @@ export function setupLayers(lmap) {
         await idb.put("maps", m);
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
         if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
-        await list(); turnOff(m.id); await turnOn(m, true);
-        msg(`Guardado ${m.name} en este dispositivo: funciona sin internet. Lo encienden y apagan las casillas encima del mapa.` + (pref.sat ? " Apaga el satélite o bájale la opacidad para verlo." : ""));
+        await list(); turnOff(m.id); await turnOn(m, true); satOff();
+        msg(`Guardado ${m.name} en este dispositivo: funciona sin internet. Lo encienden y apagan las casillas encima del mapa. He apagado el satélite para que se vea; vuelve a marcarlo si lo quieres encima.`);
       } catch (er) { msg(`${f.name}: ${/not a database|malformed/i.test(er.message) ? "no es un archivo de mapa válido" : er.message}`); }
     }
   }

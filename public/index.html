@@ -309,13 +309,19 @@
     <form id="carForm" hidden>
       <h3 id="carFormTitle">Nuevo coche</h3>
       <div class="carread">
-        <label class="btn import" id="carPhotoBtn" for="carPhotoIn">Leer la ficha técnica con fotos</label>
-        <input type="file" id="carPhotoIn" accept="image/*" multiple class="vh">
-        <span class="hint">Saca una foto de cada cara de la ficha técnica (y del permiso de circulación si quieres). Claude rellena los datos y las fotos quedan guardadas con el coche.</span>
+        <label class="btn import" id="carPhotoBtn" for="carPhotoIn">Leer la ficha técnica (fotos o PDF)</label>
+        <input type="file" id="carPhotoIn" accept="image/*,application/pdf,.pdf" multiple class="vh">
+        <span class="hint">Saca una foto de cada cara de la ficha técnica o elige el PDF (y el permiso de circulación si quieres). Claude rellena los datos; las fotos y los PDF quedan guardados con el coche.</span>
       </div>
       <p class="msg" id="carReadMsg"></p>
       <div id="carPhotos" class="carph"></div>
       <div id="carFields"></div>
+      <fieldset class="cardocs"><legend>Documentos</legend>
+        <span class="hint">Seguro, permiso de circulación, facturas, manuales… PDF, fotos, Word o lo que sea (hasta 25 MB cada uno).</span>
+        <div id="carDocs"></div>
+        <label class="btn ghost" for="carDocIn">Subir documentos</label>
+        <input type="file" id="carDocIn" multiple class="vh">
+      </fieldset>
       <div class="btns"><button type="submit">Guardar</button> <button type="button" class="ghost" id="carCancel">Cancelar</button></div>
     </form>
   </section>

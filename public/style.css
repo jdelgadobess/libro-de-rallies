@@ -280,3 +280,18 @@ body:not(.tab-car) #carBox { display: none }
 #carFields .read { background: #e8f3e0; border-color: #6a9f4b }
 #carNew { width: auto; display: inline-block; padding: 9px 18px }
 .car dl { grid-template-columns: 11em 1fr }
+.docs { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px }
+.docs li { display: flex; align-items: center; gap: 8px; font-size: .88rem }
+.docs .dk { flex: none; font-size: .66rem; font-weight: 700; letter-spacing: .04em; background: var(--ink); color: #fff; border-radius: 2px; padding: 2px 5px; min-width: 30px; text-align: center }
+.docs .dn { overflow-wrap: anywhere }
+.docs button.link { background: none; border: 0; padding: 0; color: var(--blue); text-decoration: underline; cursor: pointer; text-align: left; font: inherit; text-transform: none; letter-spacing: 0 }
+.docs .ds { color: var(--muted); font-size: .76rem; white-space: nowrap; margin-left: auto }
+.docs li > button.ghost { padding: 0 6px; font-size: .8rem }
+.docsec { display: grid; gap: 4px; justify-items: start }
+.docsec .g { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.docsec .docs { justify-self: stretch }
+.docsec label.btn, .cardocs label.btn { padding: 5px 10px; font-size: .8rem; font-weight: 600; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; text-transform: none; letter-spacing: 0 }
+.docsec label.busy { opacity: .6; pointer-events: none }
+.cardocs { border: 1px solid var(--line); border-radius: 3px; display: grid; gap: 6px; justify-items: start; margin: 0; padding: 8px 10px 10px }
+.cardocs legend { font-weight: 700; font-size: .85rem; padding: 0 4px }
+.cardocs #carDocs { justify-self: stretch }

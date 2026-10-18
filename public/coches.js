@@ -25,8 +25,46 @@ function expiry(s) {
   return days < 0 ? ["bad", "caducada"] : days <= 30 ? ["warn", `caduca en ${days} día${days === 1 ? "" : "s"}`] : ["ok", ""];
 }
 
+const BUCKET = "coches";
+const fmtSize = (b) => b >= 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+const kind = (name) => { const e = (name.split(".").pop() || "").toLowerCase(); return e === "pdf" ? "PDF" : /^(jpe?g|png|webp|heic|gif)$/.test(e) ? "FOTO" : /^(docx?|odt|rtf)$/.test(e) ? "DOC" : /^(xlsx?|ods|csv)$/.test(e) ? "XLS" : e.slice(0, 4).toUpperCase() || "ARCH"; };
+const safeName = (n) => n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.-]+/g, "_").slice(-80);
+const b64 = (file) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => ko(r.error); r.readAsDataURL(file); });
+
 export function setupCoches({ sb, canEdit, user, writeErr, toJpeg }) {
-  let cars = [], loaded = false, editing = null, photos = [];
+  let cars = [], loaded = false, editing = null, photos = [], docs = [], newDocs = [], dropDocs = [];
+
+  async function uploadDocs(carId, files) {
+    const out = [];
+    for (const f of files) {
+      const path = `${carId}/${Date.now()}-${safeName(f.name)}`;
+      const { error } = await sb.storage.from(BUCKET).upload(path, f, { contentType: f.type || "application/octet-stream" });
+      if (error) throw new Error(`«${f.name}» no se pudo subir: ${error.message}`);
+      out.push({ path, name: f.name, size: f.size, type: f.type || "", added: new Date().toISOString() });
+    }
+    return out;
+  }
+  async function openDoc(d) {
+    const w = window.open("", "_blank");
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(d.path, 3600);
+    if (error || !data) { if (w) w.close(); msg(navigator.onLine ? "No se pudo abrir el documento." : "Sin conexión: los documentos necesitan internet."); return; }
+    if (w) w.location = data.signedUrl; else location.href = data.signedUrl;
+  }
+  function docList(list, onRemove) {
+    const ul = document.createElement("ul"); ul.className = "docs";
+    list.forEach((d, i) => {
+      const li = document.createElement("li");
+      const k = document.createElement("span"); k.className = "dk"; k.textContent = kind(d.name);
+      const a = document.createElement(d.path ? "button" : "span"); a.className = d.path ? "dn link" : "dn";
+      if (d.path) { a.type = "button"; a.onclick = () => openDoc(d); }
+      a.textContent = d.name;
+      const sz = document.createElement("span"); sz.className = "ds"; sz.textContent = d.path ? fmtSize(d.size) : fmtSize(d.size) + " · se sube al guardar";
+      li.append(k, a, sz);
+      if (onRemove) { const x = document.createElement("button"); x.type = "button"; x.className = "ghost"; x.textContent = "✕"; x.title = "Quitar documento"; x.onclick = () => onRemove(i); li.append(x); }
+      ul.append(li);
+    });
+    return ul;
+  }
   const msg = (t) => { $("carMsg").textContent = t || ""; };
 
   async function load() {
@@ -84,6 +122,29 @@ export function setupCoches({ sb, canEdit, user, writeErr, toJpeg }) {
       li.append(dl);
     });
 
+    if ((c.docs || []).length || canEdit()) {
+      const sec = document.createElement("div"); sec.className = "docsec";
+      const cap = document.createElement("div"); cap.className = "g"; cap.textContent = "Documentos"; sec.append(cap);
+      if ((c.docs || []).length) sec.append(docList(c.docs));
+      if (canEdit()) {
+        const id = "carDocQuick_" + c.id;
+        const lab = document.createElement("label"); lab.className = "btn ghost"; lab.htmlFor = id; lab.textContent = "Subir documentos";
+        const inp = document.createElement("input"); inp.type = "file"; inp.id = id; inp.multiple = true; inp.className = "vh";
+        inp.onchange = async () => {
+          const files = [...inp.files]; inp.value = ""; if (!files.length) return;
+          lab.textContent = "Subiendo…"; lab.classList.add("busy");
+          try {
+            const added = await uploadDocs(c.id, files);
+            const { error } = await sb.from("cars").update({ docs: [...(c.docs || []), ...added], updated_at: new Date().toISOString() }).eq("id", c.id);
+            if (error) throw error;
+            msg(`${added.length > 1 ? added.length + " documentos subidos" : "Documento subido"} a «${d.alias || d.modelo || d.matricula || "el coche"}».`); load();
+          } catch (er) { msg(writeErr(er)); lab.textContent = "Subir documentos"; lab.classList.remove("busy"); }
+        };
+        sec.append(lab, inp);
+      }
+      li.append(sec);
+    }
+
     if ((c.photos || []).length) {
       const ph = document.createElement("div"); ph.className = "carph";
       c.photos.forEach((src, i) => {
@@ -101,6 +162,8 @@ export function setupCoches({ sb, canEdit, user, writeErr, toJpeg }) {
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Quitar";
       del.onclick = async () => {
         if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
+        const paths = (c.docs || []).map((x) => x.path);
+        if (paths.length) await sb.storage.from(BUCKET).remove(paths);
         const { error } = await sb.from("cars").delete().eq("id", c.id);
         if (error) msg(writeErr(error)); else { msg(""); load(); }
       };
@@ -132,15 +195,25 @@ export function setupCoches({ sb, canEdit, user, writeErr, toJpeg }) {
       fig.append(im, x); box.append(fig);
     });
   }
+  function showDocs() {
+    const box = $("carDocs"); box.textContent = "";
+    const all = [...docs, ...newDocs.map((f) => ({ name: f.name, size: f.size }))];
+    if (all.length) box.append(docList(all, (i) => {
+      if (i < docs.length) dropDocs.push(docs.splice(i, 1)[0]); else newDocs.splice(i - docs.length, 1);
+      showDocs();
+    }));
+  }
   function open(c) {
     editing = c || { id: null, data: {} };
-    photos = [...(editing.photos || [])];
+    photos = [...(editing.photos || [])]; docs = [...(editing.docs || [])]; newDocs = []; dropDocs = [];
+    showDocs();
     FIELDS.forEach(([k]) => { $("car_" + k).value = editing.data[k] || ""; });
     $("carFormTitle").textContent = c ? "Editar coche" : "Nuevo coche";
     showPhotos(); msg(""); render();
     $("carForm").scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  const close = () => { editing = null; photos = []; render(); };
+  const close = () => { editing = null; photos = []; docs = []; newDocs = []; dropDocs = []; render(); };
+  $("carDocIn").addEventListener("change", (e) => { newDocs.push(...e.target.files); e.target.value = ""; showDocs(); });
 
   $("carNew").onclick = () => open(null);
   $("carCancel").onclick = close;
@@ -149,10 +222,16 @@ export function setupCoches({ sb, canEdit, user, writeErr, toJpeg }) {
     if (!files.length) return;
     const out = $("carReadMsg");
     try {
-      out.textContent = `Leyendo ${files.length > 1 ? "las fotos" : "la foto"} de la ficha técnica…`;
+      out.textContent = `Leyendo ${files.length > 1 ? "los archivos" : "el archivo"} de la ficha técnica…`;
       $("carPhotoBtn").classList.add("busy");
-      const [read, keep] = await Promise.all([Promise.all(files.map((f) => toJpeg(f, 2000))), Promise.all(files.map((f) => toJpeg(f, 1400)))]);
+      const pdfs = files.filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name)), imgs = files.filter((f) => !pdfs.includes(f));
+      const big = pdfs.find((f) => f.size > 8 * 1048576);
+      if (big) throw new Error(`«${big.name}» pesa demasiado para leerlo (máx. 8 MB). Súbelo como documento y rellena los datos a mano.`);
+      const [readImgs, keep, readPdfs] = await Promise.all([Promise.all(imgs.map((f) => toJpeg(f, 2000))), Promise.all(imgs.map((f) => toJpeg(f, 1400))),
+        Promise.all(pdfs.map(async (f) => ({ mediaType: "application/pdf", data: await b64(f) })))]);
+      const read = [...readPdfs, ...readImgs];
       keep.forEach((im) => photos.push("data:image/jpeg;base64," + im.data)); showPhotos();
+      newDocs.push(...pdfs); showDocs();
       const { data, error } = await sb.functions.invoke("leer-ficha", { body: { images: read } });
       if (error) { let m = ""; try { m = (await error.context.json()).error; } catch (er) {} throw new Error(m || "No se pudo leer la ficha."); }
       const got = Object.entries(data.ficha || {}).filter(([k, v]) => LABEL[k] && String(v).trim());
@@ -167,9 +246,19 @@ export function setupCoches({ sb, canEdit, user, writeErr, toJpeg }) {
     FIELDS.forEach(([k]) => { const v = $("car_" + k).value.trim(); if (v) data[k] = k === "matricula" ? v.toUpperCase().replace(/\s+/g, "") : v; });
     if (!data.alias && !data.matricula && !data.modelo) { $("carReadMsg").textContent = "Pon al menos el nombre, el modelo o la matrícula."; return; }
     const row = { data, photos, updated_at: new Date().toISOString() };
-    const q = editing.id ? sb.from("cars").update(row).eq("id", editing.id) : sb.from("cars").insert({ ...row, created_by: user().email });
-    const { error } = await q;
-    if (error) { $("carReadMsg").textContent = writeErr(error); return; }
+    const save = $("carForm").querySelector("button[type=submit]"); save.disabled = true;
+    try {
+      let id = editing.id;
+      if (id) { const { error } = await sb.from("cars").update(row).eq("id", id); if (error) throw error; }
+      else { const { data: ins, error } = await sb.from("cars").insert({ ...row, created_by: user().email }).select("id").single(); if (error) throw error; id = ins.id; }
+      if (newDocs.length || dropDocs.length) {
+        if (newDocs.length) $("carReadMsg").textContent = `Subiendo ${newDocs.length > 1 ? newDocs.length + " documentos" : "el documento"}…`;
+        const added = await uploadDocs(id, newDocs);
+        const { error } = await sb.from("cars").update({ docs: [...docs, ...added] }).eq("id", id); if (error) throw error;
+        if (dropDocs.length) await sb.storage.from(BUCKET).remove(dropDocs.map((x) => x.path));
+      }
+    } catch (er) { $("carReadMsg").textContent = writeErr(er); save.disabled = false; return; }
+    save.disabled = false;
     FIELDS.forEach(([k]) => $("car_" + k).classList.remove("read"));
     $("carReadMsg").textContent = "";
     msg(`Guardado «${data.alias || data.modelo || data.matricula}».`);

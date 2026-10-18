@@ -1,4 +1,4 @@
-// Reads a car's details from photos of its technical sheet (ficha técnica / tarjeta ITV) or registration papers.
+// Reads a car's details from photos or PDFs of its technical sheet (ficha técnica / tarjeta ITV) or registration papers.
 import Anthropic from "npm:@anthropic-ai/sdk@0.129.0";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@0.129.0/helpers/zod";
 import { z } from "npm:zod@4.6.5";
@@ -32,10 +32,10 @@ const Ficha = z.object({
   notas: f("Reformas o anotaciones importantes (suspensión, defensas, snorkel…), breve"),
 });
 
-const PROMPT = `Las imágenes son fotos de la documentación de un coche (normalmente un 4x4): ficha técnica (tarjeta de inspección técnica), permiso de circulación o equivalentes de otro país (libretto italiano, carte grise…).
+const PROMPT = `Las imágenes o PDF son la documentación de un coche (normalmente un 4x4): ficha técnica (tarjeta de inspección técnica), permiso de circulación o equivalentes de otro país (libretto italiano, carte grise…).
 Copia cada dato EXACTAMENTE como está impreso, sin inventar. Si un dato no aparece en ninguna foto, déjalo vacío. Las fechas, en formato AAAA-MM-DD.`;
 
-const MEDIA = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MEDIA = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
   let images: { mediaType: string; data: string }[] = [];
   try { images = (await req.json())?.images ?? []; } catch { /* handled below */ }
-  if (!Array.isArray(images) || !images.length || images.length > 4) return reply(400, { error: "Envía entre 1 y 4 fotos." });
+  if (!Array.isArray(images) || !images.length || images.length > 4) return reply(400, { error: "Envía entre 1 y 4 fotos o PDF." });
   if (images.some((im) => !MEDIA.has(im?.mediaType) || typeof im?.data !== "string" || !im.data)) return reply(400, { error: "Formato de foto no válido." });
 
   const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
@@ -61,10 +61,9 @@ Deno.serve(async (req) => {
       messages: [{
         role: "user",
         content: [
-          ...images.map((im) => ({
-            type: "image" as const,
-            source: { type: "base64" as const, media_type: im.mediaType as "image/jpeg", data: im.data },
-          })),
+          ...images.map((im) => im.mediaType === "application/pdf"
+            ? { type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data: im.data } }
+            : { type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType as "image/jpeg", data: im.data } }),
           { type: "text" as const, text: PROMPT },
         ],
       }],
@@ -73,7 +72,7 @@ Deno.serve(async (req) => {
     return reply(200, { ficha: response.parsed_output ?? {} });
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) return reply(429, { error: "Demasiadas lecturas seguidas. Espera un poco." });
-    if (err instanceof Anthropic.BadRequestError) { console.error(err.message); return reply(400, { error: "Alguna foto no se pudo usar. Prueba con JPG." }); }
+    if (err instanceof Anthropic.BadRequestError) { console.error(err.message); return reply(400, { error: "Algún archivo no se pudo usar. Prueba con una foto JPG o un PDF más pequeño." }); }
     if (err instanceof Anthropic.APIError) { console.error(err.status, err.message); return reply(503, { error: "El servicio de lectura no responde. Inténtalo de nuevo." }); }
     console.error(err);
     return reply(500, { error: "Error leyendo las fotos." });

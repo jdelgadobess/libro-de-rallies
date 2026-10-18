@@ -986,8 +986,37 @@ async function loadPlan() {
   $("pMsg").textContent = `Propuestas calculadas el ${new Date(row.created_at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}. Pulsa «Calcular» para rehacerlas.` + (row.note ? " " + row.note.replace(/^\d+ propuestas[^.]*\.\s*/, "") : "");
   renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
 }
+function renderOwn() {
+  const list = state.stageFilter === "all" ? [] : optTracks(), ul = $("pOwn"); ul.textContent = "";
+  $("pOwnBox").hidden = !list.length;
+  list.forEach((t) => {
+    const tw = trackWps(t), li = document.createElement("li"); li.className = filt.trk === t.id ? "on" : "";
+    const h = document.createElement("div"); h.className = "t";
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = stageColor(stageKey(t));
+    h.append(sw, t.name);
+    const d = document.createElement("div"); d.className = "d";
+    d.textContent = `${kmOf(t.segs).toFixed(1)} km · ${tw.length} WP · ${sumPts(tw)} pts` + (tw.length ? " · " + tw.map((w) => w.name).join(" → ") : "");
+    const b = document.createElement("div"); b.className = "btns";
+    const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
+    gx.onclick = (e) => { e.stopPropagation(); download(slug(t.name + " Etapa " + stageKey(t)) + ".gpx", buildGpx(tw, t.name, [t], true), "application/gpx+xml"); };
+    b.append(gx);
+    if (canEdit()) {
+      const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
+        try { must(await sb.from("tracks").delete().eq("id", t.id)); if (filt.trk === t.id) filt.trk = ""; await loadAll(); } catch (er) { $("pMsg").textContent = writeErr(er); }
+      };
+      b.append(del);
+    }
+    // tapping an option shows only it on the map (tap again for all)
+    li.onclick = () => { filt.trk = filt.trk === t.id ? "" : t.id; filt.tracks = true; $("fTracks").checked = true; renderTrkPick(); renderOwn(); renderMap(); if (filt.trk && lmap) lmap.fitBounds(t.segs.flat(), { padding: [30, 30] }); };
+    li.append(h, d, b); ul.append(li);
+  });
+}
 function renderPlan() {
   if (state.tab !== "plan") return;
+  renderOwn();
   if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; loadPlan(); }
   const wps = mapWps();
   $("pScope").textContent = state.stageFilter === "all"
@@ -1119,6 +1148,8 @@ function renderDraw() {
   const on = !!drawing;
   $("drawStart").hidden = on; $("drawTools").hidden = !on;
   $("gmap").classList.toggle("drawing", on);
+  // quick taps while drawing must add points, not zoom in
+  if (lmap) on ? lmap.doubleClickZoom.disable() : lmap.doubleClickZoom.enable();
   $("scaleHelp").textContent = on ? "Toca el mapa para añadir puntos; toca un waypoint para pasar justo por él" : "Toca dos waypoints para ver la distancia";
   const jw = on ? drawnWps() : [];
   $("drawInfo").textContent = on ? `${drawing.pts.length} puntos · ${kmOf([drawing.pts]).toFixed(2)} km · ${jw.length} WP unidos · total ${sumPts(jw)} pts` : "";
@@ -1138,9 +1169,12 @@ $("drawStart").onclick = () => { drawing = { pts: [], wpAt: [], hist: [] }; $("d
 $("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
 $("drawUndo").onclick = drawUndo;
 $("drawAll").onclick = () => { drawStep(); const l = mapWps(); drawing.pts = l.map((w) => [w.lat, w.lon]); drawing.wpAt = l.map((w) => w.id); renderDraw(); renderMap(); };
+// in the planner the drawn routes are numbered options of the stage
+const optTracks = () => stageTracks().filter((t) => /^Opción \d+/.test(t.name)).sort((a, b) => natural(a.name, b.name));
+const nextOpt = () => "Opción " + (Math.max(0, ...optTracks().map((t) => parseInt(t.name.slice(7), 10) || 0)) + 1);
 $("drawSave").onclick = async () => {
   const st = currentStage();
-  const name = prompt("Nombre de la ruta:", "Ruta dibujada" + (st ? " · Etapa " + st : ""));
+  const name = prompt("Nombre de la ruta:", state.tab === "plan" ? nextOpt() : "Ruta dibujada" + (st ? " · Etapa " + st : ""));
   if (name === null) return;
   if (await saveTrack(name.trim() || "Ruta dibujada", [drawing.pts], $("drawMsg"), drawnWps())) { drawing = null; renderDraw(); renderMap(); }
 };
@@ -1148,7 +1182,7 @@ $("drawSave").onclick = async () => {
 // the drawn line straight to a clean GPX file (only the waypoints it joins), without saving it
 $("drawGpx").onclick = () => {
   const st = currentStage();
-  const name = prompt("Nombre del track:", "Ruta dibujada" + (st ? " · Etapa " + st : ""));
+  const name = prompt("Nombre del track:", state.tab === "plan" ? nextOpt() : "Ruta dibujada" + (st ? " · Etapa " + st : ""));
   if (name === null) return;
   const t = { name: name.trim() || "Ruta dibujada", segs: [drawing.pts] }, wps = drawnWps();
   download(slug(t.name) + ".gpx", buildGpx(wps, t.name, [t], true), "application/gpx+xml");

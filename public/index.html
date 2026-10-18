@@ -103,6 +103,11 @@
         <div class="btns"><button type="button" class="hl" id="pRun">Proponer rutas</button></div>
         <p class="msg" id="pMsg"></p>
         <ul class="alts" id="pAlts"></ul>
+        <div class="own" id="pOwnBox" hidden>
+          <h3>Tus opciones dibujadas</h3>
+          <ul class="alts" id="pOwn"></ul>
+        </div>
+        <p class="hint">Para trazar una opción a mano, pulsa «Dibujar ruta» encima del mapa y ve tocando puntos (o waypoints). Se guarda como Opción 1, Opción 2…</p>
         <p class="hint">Usa los waypoints marcados de la etapa y las pistas y carreteras del mapa off-road. Siempre empieza en la SALIDA y acaba en la LLEGADA de la etapa. Donde no hay camino va en línea recta y lo cuenta como «fuera de pista».</p>
       </section>
 
@@ -226,7 +231,7 @@
             </select>
           </span>
         </div>
-        <div class="drawbar" data-edit data-libro>
+        <div class="drawbar" data-edit>
           <button type="button" class="ghost" id="drawStart">Dibujar ruta</button>
           <span id="drawTools" hidden>
             <button type="button" class="ghost" id="drawAll">Unir los WP en orden</button>

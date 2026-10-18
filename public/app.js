@@ -427,7 +427,7 @@ function loadMaps() {
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
   setupLayers(lmap);
   setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
-    onMeasure: gpsMeasure, routes: followRoutes, onMove: (lat, lon) => {
+    onMeasure: gpsMeasure, routes: followRoutes, waypoints: () => rallyWps().filter((w) => stageKey(w) === ($("recStage").value || (state.stageFilter !== "all" ? state.stageFilter : ""))), onMove: (lat, lon) => {
       // measuring from where I am: the start follows the GPS, redrawn every few seconds
       const g = measure[0]; if (!g || !g.gps) return;
       g.lat = Math.round(lat * 1e6) / 1e6; g.lon = Math.round(lon * 1e6) / 1e6;

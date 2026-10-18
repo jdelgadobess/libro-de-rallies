@@ -25,9 +25,22 @@ function nearestOn(p, segs) {
   }
   return best;
 }
+const brg = (a, b) => { const y = Math.sin((b[1] - a[1]) * rad) * Math.cos(b[0] * rad), x = Math.cos(a[0] * rad) * Math.sin(b[0] * rad) - Math.sin(a[0] * rad) * Math.cos(b[0] * rad) * Math.cos((b[1] - a[1]) * rad); return (Math.atan2(y, x) / rad + 360) % 360; };
+const card = (d) => ["N", "NE", "E", "SE", "S", "SO", "O", "NO"][Math.round(d / 45) % 8];
+// beeps with the phone's speaker; the sound is unlocked when «Iniciar ruta» is tapped
+let actx = null;
+const audioOn = () => { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {} };
+function beep(times, ms, hz) {
+  if (!actx) return;
+  for (let i = 0; i < times; i++) {
+    const t = actx.currentTime + i * (ms + 120) / 1000, o = actx.createOscillator(), g = actx.createGain();
+    o.type = "square"; o.frequency.value = hz; g.gain.setValueAtTime(0.25, t); g.gain.setValueAtTime(0, t + ms / 1000);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + ms / 1000 + 0.02);
+  }
+}
 const say = (t) => { try { if (!("speechSynthesis" in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = "es-ES"; u.rate = 1; speechSynthesis.speak(u); } catch (e) {} };
 
-export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes }) {
+export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes, waypoints }) {
   const layer = L.layerGroup().addTo(map), recLayer = L.layerGroup().addTo(map);
   let watch = null, follow = true, last = null, rec = null, wake = null, dot = null, ring = null, head = null, recLine = null, pendingTry = false;
   let keepUntil = 0; // an important message stays a few seconds before the accuracy readout replaces it
@@ -66,7 +79,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
 
   function onPos(p) {
-    last = p; draw(p); onMove(p.coords.latitude, p.coords.longitude); checkRoute(p);
+    last = p; draw(p); onMove(p.coords.latitude, p.coords.longitude); checkRoute(p); checkNav(p);
     const speed = p.coords.speed ? ` · ${Math.round(p.coords.speed * 3.6)} km/h` : "";
     msg(`Precisión ±${Math.round(p.coords.accuracy)} m${speed}`);
     if (rec && p.coords.accuracy <= MAX_ACC) {
@@ -187,7 +200,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     $("followInfo").textContent = fol ? `Siguiendo «${fol.route.name}» · aviso a ${fol.thr} m` : "";
   }
   function checkRoute(p) {
-    if (!fol || p.coords.accuracy > MAX_ACC) return;
+    if (!fol || p.coords.accuracy > MAX_ACC || !fol.route.segs.length) return;
     const here = [p.coords.latitude, p.coords.longitude], n = nearestOn(here, fol.route.segs);
     if (!n.at) return;
     fol.lastD = n.d; folLayer.clearLayers();
@@ -205,11 +218,49 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
       fol.off = false; fol.quiet = false; showOff(0); say("De nuevo en la ruta");
     } else if (fol.off) showOff(n.d);
   }
+  /* ---------- while following: the course in a box, and each waypoint announced at 50 m and taken at 5 m ---------- */
+  const NEAR = 50, TAKEN = 5;
+  const hdg = document.createElement("div"); hdg.className = "navbox hdg"; hdg.hidden = true;
+  const wpb = document.createElement("div"); wpb.className = "navbox wpnav"; wpb.hidden = true;
+  [hdg, wpb].forEach((d) => { L.DomEvent.disableClickPropagation(d); map.getContainer().append(d); });
+  const arrowSvg = (deg, color) => `<svg viewBox="0 0 40 40" style="transform:rotate(${Math.round(deg)}deg)"><path d="M20 3 L31 33 L20 26 L9 33 Z" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
+  function checkNav(p) {
+    if (!fol || p.coords.accuracy > MAX_ACC) return;
+    const here = [p.coords.latitude, p.coords.longitude], spd = p.coords.speed || 0;
+    // course: the GPS's own when moving, else from the last few metres driven
+    if (!fol.prev) fol.prev = here;
+    else if (meters(fol.prev, here) >= 5) { fol.course = brg(fol.prev, here); fol.prev = here; }
+    const hd = p.coords.heading;
+    if (hd !== null && hd !== undefined && !Number.isNaN(hd) && spd > 1) fol.course = hd;
+    hdg.hidden = false;
+    hdg.innerHTML = fol.course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
+      : `<b>Rumbo</b>${arrowSvg(fol.course, "#1a73e8")}<span class="big">${String(Math.round(fol.course) % 360).padStart(3, "0")}°</span><small>${card(fol.course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
+    // the nearest waypoint of the stage not taken yet
+    let best = null;
+    for (const w of waypoints()) {
+      if (fol.taken.has(w.id)) continue;
+      const d = meters(here, [w.lat, w.lon]);
+      if (!best || d < best.d) best = { w, d };
+    }
+    if (!best || best.d > NEAR) { wpb.hidden = !fol.lastTaken || Date.now() - fol.lastTaken.at > 8000; if (!wpb.hidden) wpb.innerHTML = `<span class="ok">✓ WP ${fol.lastTaken.name} cogido</span>`; return; }
+    const w = best.w, b = brg(here, [w.lat, w.lon]);
+    if (best.d <= TAKEN) {
+      fol.taken.add(w.id); fol.lastTaken = { name: w.name, at: Date.now() };
+      beep(1, 900, 1320); try { navigator.vibrate && navigator.vibrate(600); } catch (e) {}
+      wpb.hidden = false; wpb.innerHTML = `<span class="ok">✓ WP ${w.name} cogido${w.pts ? " · " + w.pts + " pts" : ""}</span>`;
+      return;
+    }
+    if (fol.warned !== w.id) { fol.warned = w.id; beep(3, 140, 880); try { navigator.vibrate && navigator.vibrate([150, 80, 150]); } catch (e) {} }
+    // the map is north up, so the arrow points straight at the waypoint on screen
+    wpb.hidden = false;
+    wpb.innerHTML = `${arrowSvg(b, "#c62828")}<div><b>WP ${w.name}${w.pts ? " · " + w.pts + " pts" : ""}</b><span class="big">${Math.round(best.d)} m</span><small>rumbo ${String(Math.round(b) % 360).padStart(3, "0")}° ${card(b)}</small></div>`;
+  }
   function startFollow() {
     const r = routes().find((x) => x.key === $("followSel").value);
     if (!r) { msg("Esta etapa no tiene ninguna ruta que seguir: dibuja una, haz una propuesta o importa un track.", true); return; }
     const thr = Math.max(10, parseInt($("followM").value, 10) || 50);
-    fol = { route: { name: r.name, segs: r.segs.filter((s) => s.length) }, thr, off: false, quiet: false, lastWarn: 0, ownRec: false };
+    audioOn();
+    fol = { route: { name: r.name, segs: r.segs.filter((s) => s.length) }, thr, off: false, quiet: false, lastWarn: 0, ownRec: false, taken: new Set(), warned: null, prev: null, course: undefined, lastTaken: null };
     say(`Iniciando ruta. Te aviso si te desvías más de ${thr} metros`);
     follow = true; startWatch();
     if (!rec && canEdit() && stage()) { fol.ownRec = true; startRec(false); }
@@ -217,7 +268,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     followUi(); if (last) checkRoute(last);
   }
   function stopFollow() {
-    const own = fol && fol.ownRec; fol = null; folLayer.clearLayers(); showOff(0); followUi(); say("Ruta terminada");
+    const own = fol && fol.ownRec; fol = null; folLayer.clearLayers(); showOff(0); hdg.hidden = wpb.hidden = true; followUi(); say("Ruta terminada");
     if (own && rec) stopRec();
   }
   $("followBtn").onclick = () => (fol ? stopFollow() : startFollow());

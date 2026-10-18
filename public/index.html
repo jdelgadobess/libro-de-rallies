@@ -233,6 +233,12 @@
         </div>
         <div class="drawbar" data-edit>
           <button type="button" class="ghost" id="drawStart">Dibujar ruta</button>
+          <button type="button" class="ghost" id="addStart">📍 Crear waypoints en el mapa</button>
+          <span id="addTools" hidden>
+            <button type="button" class="ghost" id="addEdit" disabled>✎ Editar el último</button>
+            <button type="button" class="ghost" id="addUndo" disabled>↶ Borrar el último</button>
+            <button type="button" class="hl" id="addEnd">✓ Terminar</button>
+          </span>
           <span id="drawTools" hidden>
             <button type="button" class="ghost" id="drawAll">Unir los WP en orden</button>
             <button type="button" class="ghost" id="drawUndo" title="También con Cmd+Z o la tecla de borrar">↶ Deshacer</button>

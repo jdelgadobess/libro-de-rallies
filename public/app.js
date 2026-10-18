@@ -366,6 +366,7 @@ $("fClear").onclick = () => {
 
 /* ---------- map (satellite, no key needed) ---------- */
 let lmap = null, layer = null, fitKey = "", measure = [];
+let adding = null; // creating waypoints by tapping the map: { made: [ids created in this go] }
 const TOUCH = window.matchMedia && matchMedia("(pointer: coarse)").matches;
 // direction arrows along tracks and routes, spaced on screen so they stay readable at any zoom
 let arrowLayer = null, arrowLines = [];
@@ -440,6 +441,7 @@ function loadMaps() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && measure.length && !drawing) { measure = []; state.hi = null; renderTable(); renderMap(); } });
   lmap.on("click", (e) => {
     if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
+    if (adding) { addWpAt(e.latlng); return; }
     // a tap on the map is a measuring point too
     const p = { id: null, lat: Math.round(e.latlng.lat * 1e6) / 1e6, lon: Math.round(e.latlng.lng * 1e6) / 1e6, name: "Punto" };
     measure = addMeasure(p);
@@ -1174,7 +1176,7 @@ async function satFill(wps, msg) {
 let drawing = null;
 function renderDraw() {
   const on = !!drawing;
-  $("drawStart").hidden = on; $("drawTools").hidden = !on;
+  $("drawStart").hidden = on || !!adding; $("addStart").hidden = on || !!adding; $("drawTools").hidden = !on;
   $("gmap").classList.toggle("drawing", on);
   // quick taps while drawing must add points, not zoom in
   if (lmap) on ? lmap.doubleClickZoom.disable() : lmap.doubleClickZoom.enable();
@@ -1193,6 +1195,41 @@ document.addEventListener("keydown", (e) => {
   if (!drawing || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
   if ((e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) || e.key === "Backspace") { e.preventDefault(); drawUndo(); }
 });
+/* ---------- creating waypoints by tapping the map, into the stage being viewed ---------- */
+const addStage = () => state.stageFilter !== "all" && state.stageFilter !== "" ? state.stageFilter : currentStage();
+function renderAdd() {
+  const on = !!adding;
+  $("addStart").hidden = on || !!drawing; $("addTools").hidden = !on; $("drawStart").hidden = on || !!drawing;
+  $("gmap").classList.toggle("drawing", on || !!drawing);
+  if (lmap) (on || drawing) ? lmap.doubleClickZoom.disable() : lmap.doubleClickZoom.enable();
+  $("addEdit").disabled = $("addUndo").disabled = !on || !adding.made.length;
+  if (on) $("scaleHelp").textContent = `Toca el mapa para crear un waypoint en la ${stageLabel(addStage()).toLowerCase()}`;
+}
+$("addStart").onclick = () => {
+  if (!rally()) { $("drawMsg").textContent = "Elige primero el año en el paso 1."; return; }
+  if (!addStage()) { $("drawMsg").textContent = "Pon primero el nº de etapa en el paso 2: los waypoints se crean en esa etapa."; $("stageNo").classList.add("need"); $("stageNo").focus(); return; }
+  if (state.stageFilter !== addStage()) pickStage(addStage());
+  adding = { made: [] }; measure = []; $("drawMsg").textContent = `Toca el mapa donde quieras cada waypoint. Se guardan en la ${stageLabel(addStage()).toLowerCase()} con el siguiente número.`;
+  renderAdd(); renderMap();
+};
+$("addEnd").onclick = () => { const n = adding ? adding.made.length : 0; adding = null; $("drawMsg").textContent = n ? (n > 1 ? `Creados ${n} waypoints. Puedes editarlos o borrarlos desde la lista.` : "Creado 1 waypoint. Puedes editarlo o borrarlo desde la lista.") : ""; $("scaleHelp").textContent = "Toca dos waypoints para ver la distancia"; renderAdd(); };
+async function addWpAt(ll) {
+  const st = addStage(), inSt = rallyWps().filter((w) => stageKey(w) === st);
+  const n = inSt.reduce((m, w) => Math.max(m, parseInt(String(w.name).match(/\d+/)?.[0] || "0", 10)), 0) + 1;
+  const d = { rallyId: state.rallyId, stage: st, name: String(n), page: "", desc: "", lat: Math.round(ll.lat * 1e6) / 1e6, lon: Math.round(ll.lng * 1e6) / 1e6, pts: null };
+  try {
+    const row = must(await sb.from("waypoints").insert(wpOut({ ...d, seq: n, source: "mapa", by: state.user.email })).select().single());
+    state.wps.push(wpIn(row)); if (adding) adding.made.push(row.id);
+    $("drawMsg").textContent = `Creado el waypoint ${n} en la ${stageLabel(st).toLowerCase()}. Con «✎ Editar el último» le pones nombre y puntos.`;
+    renderAdd(); render();
+  } catch (e) { $("drawMsg").textContent = writeErr(e); }
+}
+$("addUndo").onclick = async () => {
+  const id = adding && adding.made.pop(); if (!id) return;
+  try { must(await sb.from("waypoints").delete().eq("id", id)); state.wps = state.wps.filter((w) => w.id !== id); $("drawMsg").textContent = "Borrado el último waypoint creado."; renderAdd(); render(); }
+  catch (e) { adding.made.push(id); $("drawMsg").textContent = writeErr(e); }
+};
+$("addEdit").onclick = () => { const w = adding && state.wps.find((x) => x.id === adding.made[adding.made.length - 1]); if (w) startEdit(w); };
 $("drawStart").onclick = () => { drawing = { pts: [], wpAt: [], hist: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
 $("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
 $("drawUndo").onclick = drawUndo;

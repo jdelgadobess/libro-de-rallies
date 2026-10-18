@@ -295,6 +295,7 @@ body:not(.tab-car) #carBox { display: none }
 .cardocs { border: 1px solid var(--line); border-radius: 3px; display: grid; gap: 6px; justify-items: start; margin: 0; padding: 8px 10px 10px }
 .cardocs legend { font-weight: 700; font-size: .85rem; padding: 0 4px }
 .cardocs #carDocs { justify-self: stretch }
-.filters .trkpick { display: flex; flex-wrap: wrap; gap: 8px; align-items: end }
-.filters .trkpick select { min-width: 200px; max-width: 320px }
-.filters .trkpick button { padding: 7px 12px }
+.trkpick { display: flex; flex-wrap: wrap; gap: 8px; align-items: end }
+.trkpick label { display: grid; gap: 4px; flex: 1 1 220px }
+.trkpick select { width: 100% }
+.trkpick button { padding: 7px 12px }

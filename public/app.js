@@ -248,6 +248,10 @@ function render() {
     ? "Viendo todas las etapas. Escribe un número para ver solo esa etapa" + (canEdit() ? " y guardar en ella los waypoints nuevos." : ".")
     : `Viendo la etapa ${state.stageFilter}: ${rallyWps().filter((w) => stageKey(w) === state.stageFilter).length} WP.` + (canEdit() ? " Los waypoints nuevos se guardan aquí." : "");
 
+  const sd = $("stageDel"), st = state.stageFilter;
+  sd.hidden = !r || !canEdit() || st === "all" || st === "";
+  if (sd.dataset.stage !== st) { sd.dataset.stage = st; delete sd.dataset.armed; sd.className = "ghost"; sd.textContent = `Eliminar etapa ${st}`; }
+
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
@@ -741,6 +745,20 @@ $("fTrkDel").onclick = async () => {
     if (filt.only === t.id) filt.only = null;
     filt.trk = ""; await loadAll();
   } catch (e) { del.textContent = "Eliminar ruta"; delete del.dataset.armed; del.className = "ghost"; alert(writeErr(e)); }
+};
+// deletes the whole stage shown: its waypoints and its routes
+$("stageDel").onclick = async () => {
+  const sd = $("stageDel"), st = state.stageFilter; if (st === "all" || st === "") return;
+  const nW = rallyWps().filter((w) => stageKey(w) === st).length, nT = rallyTracks().filter((t) => stageKey(t) === st).length;
+  if (!sd.dataset.armed) { sd.dataset.armed = "1"; sd.className = "warn"; sd.textContent = `¿Seguro? Se borran ${nW} WP y ${nT} ruta${nT === 1 ? "" : "s"} de la etapa ${st}`; return; }
+  sd.disabled = true;
+  try {
+    must(await sb.from("tracks").delete().eq("rally_id", state.rallyId).eq("stage", st));
+    must(await sb.from("waypoints").delete().eq("rally_id", state.rallyId).eq("stage", st));
+    state.stageFilter = "all"; $("stageNo").value = ""; filt.trk = ""; filt.only = null;
+    await loadAll();
+  } catch (e) { sd.textContent = writeErr(e); }
+  sd.disabled = false; delete sd.dataset.armed; sd.dataset.stage = "";
 };
 function renderTracks() {
   renderTrkPick();

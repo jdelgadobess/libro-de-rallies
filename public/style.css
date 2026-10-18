@@ -361,3 +361,12 @@ body:not(.tab-rec) #recTab { display: none }
 /* phone, tablet and full screen: no text line under the map, so the map gets the room (distances show on the map itself) */
 @media (pointer: coarse) { .mapbox .scale { display: none } }
 .mapbox.full .scale { display: none }
+
+/* phone and tablet: a slim header, so the app starts at the top instead of under a big photo of the sky */
+@media (pointer: coarse), (max-width: 700px) {
+  .hero { min-height: 0; padding-block: 10px; background-position: 50% 80% }
+  .hero .in { align-items: center; gap: 8px 14px }
+  h1 { font-size: 1.6rem }
+  .sub { display: none }
+  .stats div { padding: 3px 8px } .stats b { font-size: 1.1rem }
+}

@@ -99,7 +99,7 @@ function offroadStyle() {
     { dataLayer: "places", symbolizer: new P.CenteredTextSymbolizer({ labelProps: names, fill: "#2b1d0e", stroke: "#fff8e8", width: 2.5, font: "600 13px sans-serif" }), filter: kind("locality", "region", "country") },
     { dataLayer: "water", symbolizer: new P.CenteredTextSymbolizer({ labelProps: names, fill: "#2f6a99", stroke: "#fff", width: 2, font: "italic 11px sans-serif" }), minzoom: 11 },
   ];
-  return { paintRules: areas(paintRules), labelRules, backgroundColor: "#efe4cf" };
+  return { paintRules: areas(paintRules), labelRules }; // no background: outside its area the map underneath must still show
 }
 
 const one = (db, q, p) => { const st = db.prepare(q); st.bind(p || []); const r = st.step() ? st.get() : null; st.free(); return r; };
@@ -218,7 +218,7 @@ export function setupLayers(lmap) {
     let src, layer;
     if (/\.pmtiles$/i.test(m.file || "")) {
       src = await openPmtiles(m.blob, m.id); await script(PROTOMAPS_JS);
-      layer = window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
+      layer = window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", bounds: src.bounds, attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
       src.close = () => {};
     } else {
       const SQL = await sqlLib();

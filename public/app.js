@@ -1218,30 +1218,51 @@ $("addStart").onclick = () => {
   if (!rally()) { $("drawMsg").textContent = "Elige primero el año en el paso 1."; return; }
   if (!addStage()) { $("drawMsg").textContent = "Pon primero el nº de etapa en el paso 2: los waypoints se crean en esa etapa."; $("stageNo").classList.add("need"); $("stageNo").focus(); return; }
   if (state.stageFilter !== addStage()) pickStage(addStage());
-  adding = { made: [] }; measure = []; $("addNo").value = nextWpNo(addStage()); $("drawMsg").textContent = `Toca el mapa donde quieras cada waypoint. Se guardan en la ${stageLabel(addStage()).toLowerCase()} con el siguiente número.`;
+  adding = { made: [], next: nextWpNo(addStage()), pend: null }; measure = []; $("drawMsg").textContent = `Toca el mapa donde quieras un waypoint y pon su puntuación. Se guardan en la ${stageLabel(addStage()).toLowerCase()}.`;
   renderAdd(); renderMap();
 };
-$("addEnd").onclick = () => { const n = adding ? adding.made.length : 0; adding = null; $("drawMsg").textContent = n ? (n > 1 ? `Creados ${n} waypoints. Puedes editarlos o borrarlos desde la lista.` : "Creado 1 waypoint. Puedes editarlo o borrarlo desde la lista.") : ""; $("scaleHelp").textContent = "Toca dos waypoints para ver la distancia"; renderAdd(); };
+$("addEnd").onclick = () => { if (adding && adding.pend) adding.pend.close(); const n = adding ? adding.made.length : 0; adding = null; $("drawMsg").textContent = n ? (n > 1 ? `Creados ${n} waypoints. Puedes editarlos o borrarlos desde la lista.` : "Creado 1 waypoint. Puedes editarlo o borrarlo desde la lista.") : ""; $("scaleHelp").textContent = "Toca dos waypoints para ver la distancia"; renderAdd(); };
 // the number after the highest one in the stage
 const nextWpNo = (st) => rallyWps().filter((w) => stageKey(w) === st).reduce((m, w) => Math.max(m, parseInt(String(w.name).match(/\d+/)?.[0] || "0", 10)), 0) + 1;
-async function addWpAt(ll) {
-  // the number is the one in the box, which then moves on to the next
-  const st = addStage(), n = parseInt($("addNo").value, 10), pts = parseInt($("addPts").value, 10);
-  if (!Number.isFinite(n) || n < 0) { $("drawMsg").textContent = "Pon el nº del waypoint en la casilla «Nº»."; $("addNo").focus(); return; }
-  if (rallyWps().some((w) => stageKey(w) === st && String(w.name) === String(n))) { $("drawMsg").textContent = `Ya hay un waypoint ${n} en la ${stageLabel(st).toLowerCase()}: cambia el número en la casilla «Nº».`; $("addNo").focus(); return; }
-  const d = { rallyId: state.rallyId, stage: st, name: String(n), page: "", desc: "", lat: Math.round(ll.lat * 1e6) / 1e6, lon: Math.round(ll.lng * 1e6) / 1e6, pts: Number.isFinite(pts) && pts > 0 ? pts : null };
-  try {
-    const row = must(await sb.from("waypoints").insert(wpOut({ ...d, seq: n, source: "mapa", by: state.user.email })).select().single());
-    state.wps.push(wpIn(row)); if (adding) adding.made.push(row.id);
-    $("addNo").value = n + 1;
-    $("drawMsg").textContent = `Creado el waypoint ${n}${d.pts ? ` (${d.pts} pts)` : ""} en la ${stageLabel(st).toLowerCase()}. El siguiente será el ${n + 1}; cámbialo en «Nº» si quieres otro.`;
-    renderAdd(); render();
-  } catch (e) { $("drawMsg").textContent = writeErr(e); }
+// a tap opens a small form on that spot: the waypoint is saved with its number and points, and until then no other tap counts
+function addWpAt(ll) {
+  if (adding.pend) { adding.pend.focus(); $("drawMsg").textContent = "Pon primero la puntuación del waypoint que tienes abierto (o cancélalo)."; return; }
+  const st = addStage(), at = [Math.round(ll.lat * 1e6) / 1e6, Math.round(ll.lng * 1e6) / 1e6];
+  const f = document.createElement("form");
+  f.innerHTML = '<label for="apNo">Nº</label><input id="apNo" type="number" inputmode="numeric" min="0" step="1" required>' +
+    '<label for="apPts">Puntos</label><input id="apPts" type="number" inputmode="numeric" min="1" step="1" required>' +
+    '<p class="e" id="apErr"></p><div class="b"><button type="submit" class="hl">Guardar</button><button type="button" class="ghost" id="apCancel">Cancelar</button></div>';
+  const no = f.querySelector("#apNo"), pts = f.querySelector("#apPts"), err = f.querySelector("#apErr");
+  no.value = adding.next;
+  L.DomEvent.disableClickPropagation(f);
+  const pin = L.circleMarker(at, { radius: 8, color: "#000", weight: 2, fillColor: "#c62828", fillOpacity: 1, interactive: false }).addTo(lmap);
+  const pop = L.popup({ className: "addpop", closeButton: false, autoClose: false, closeOnClick: false, closeOnEscapeKey: false, offset: [0, -6] }).setLatLng(at).setContent(f).openOn(lmap);
+  const close = () => { lmap.closePopup(pop); pin.remove(); if (adding) adding.pend = null; };
+  adding.pend = { focus: () => (pts.value ? no : pts).focus(), close };
+  f.querySelector("#apCancel").onclick = () => { close(); $("drawMsg").textContent = "Cancelado. Toca el mapa para crear otro waypoint."; };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const n = parseInt(no.value, 10), p = parseInt(pts.value, 10);
+    if (!Number.isFinite(n) || n < 0) { err.textContent = "Pon el número."; no.focus(); return; }
+    if (!Number.isFinite(p) || p < 1) { err.textContent = "Pon la puntuación."; pts.focus(); return; }
+    if (rallyWps().some((w) => stageKey(w) === st && String(w.name) === String(n))) { err.textContent = `Ya hay un ${n} en la ${stageLabel(st).toLowerCase()}.`; no.focus(); return; }
+    const d = { rallyId: state.rallyId, stage: st, name: String(n), page: "", desc: "", lat: at[0], lon: at[1], pts: p };
+    f.querySelector("button[type=submit]").disabled = true;
+    try {
+      const row = must(await sb.from("waypoints").insert(wpOut({ ...d, seq: n, source: "mapa", by: state.user.email })).select().single());
+      close();
+      state.wps.push(wpIn(row)); if (adding) { adding.made.push(row.id); adding.next = n + 1; }
+      $("drawMsg").textContent = `Creado el waypoint ${n} (${p} pts) en la ${stageLabel(st).toLowerCase()}. Toca el mapa para el siguiente.`;
+      renderAdd(); render();
+    } catch (er) { err.textContent = writeErr(er); f.querySelector("button[type=submit]").disabled = false; }
+  };
+  setTimeout(() => pts.focus(), 50);
+  $("drawMsg").textContent = "Pon la puntuación de este waypoint y pulsa Guardar.";
 }
 $("addUndo").onclick = async () => {
   const id = adding && adding.made.pop(); if (!id) return;
   const gone = state.wps.find((w) => w.id === id);
-  try { must(await sb.from("waypoints").delete().eq("id", id)); state.wps = state.wps.filter((w) => w.id !== id); if (gone) $("addNo").value = gone.name; $("drawMsg").textContent = "Borrado el último waypoint creado."; renderAdd(); render(); }
+  try { must(await sb.from("waypoints").delete().eq("id", id)); state.wps = state.wps.filter((w) => w.id !== id); if (gone && adding) adding.next = parseInt(gone.name, 10) || adding.next; $("drawMsg").textContent = "Borrado el último waypoint creado."; renderAdd(); render(); }
   catch (e) { adding.made.push(id); $("drawMsg").textContent = writeErr(e); }
 };
 $("addEdit").onclick = () => { const w = adding && state.wps.find((x) => x.id === adding.made[adding.made.length - 1]); if (w) startEdit(w); };

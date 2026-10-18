@@ -324,5 +324,8 @@ body:not(.tab-rec) #recTab { display: none }
 .measure-ctl button:last-child { background: #c1272d; color: #fff; border-color: #8f1b14 }
 .plan .own h3 { margin: 14px 0 4px; font-size: .95rem }
 
-.addno { display: inline-flex; align-items: center; gap: 4px; font-size: .85rem }
-.addno input { width: 4.5em; padding: 5px 6px }
+.addpop form { display: grid; grid-template-columns: auto auto; gap: 6px 8px; align-items: center; font-size: .9rem }
+.addpop input { width: 5.5em; padding: 6px; font-size: 1rem }
+.addpop .b { grid-column: 1 / -1; display: flex; gap: 6px }
+.addpop .b button { padding: 6px 12px }
+.addpop .e { grid-column: 1 / -1; color: #c62828; font-size: .8rem; margin: 0 }

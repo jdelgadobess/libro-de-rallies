@@ -55,6 +55,7 @@
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" id="tabLibro" aria-selected="true">Libro de ruta</button>
     <button type="button" role="tab" id="tabPlan" aria-selected="false">Planificador de rutas</button>
+    <button type="button" role="tab" id="tabRec" aria-selected="false">Rutas grabadas</button>
     <button type="button" role="tab" id="tabMec" aria-selected="false">Mecánica</button>
     <button type="button" role="tab" id="tabCar" aria-selected="false">Coches</button>
   </nav>
@@ -324,6 +325,12 @@
       <input type="file" id="mecFile" accept="video/*" multiple class="vh">
     </form>
     <p class="msg" id="mecMsg"></p>
+  </section>
+  <section class="panel recs" id="recTab">
+    <h2>Rutas grabadas <small>Todas las rutas grabadas con el GPS</small></h2>
+    <p class="hint">Graba desde el mapa con «⏺ Grabar ruta». Si al grabar tienes elegida una etapa, la ruta queda guardada en esa etapa y sale con sus waypoints y trazas. Aquí puedes pasar una grabación a otra etapa.</p>
+    <p class="msg" id="recTabMsg"></p>
+    <div id="recAll"></div>
   </section>
   <section class="panel cars" id="carBox">
     <h2>Coches <small>Ficha técnica de cada 4x4</small></h2>

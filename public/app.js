@@ -256,7 +256,7 @@ function render() {
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
-  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads(); renderPlan();
+  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads(); renderPlan(); renderRecTab();
 }
 
 function renderTable() {
@@ -768,7 +768,7 @@ function renderTrkPick() {
   if (filt.trk && !list.some((t) => t.id === filt.trk)) filt.trk = "";
   const sel = $("fTrk"); sel.textContent = "";
   sel.append(new Option(list.length ? `Todas (${list.length})` : "No hay rutas", ""));
-  list.forEach((t) => sel.append(new Option(`${t.name} · ${kmOf(t.segs).toFixed(1)} km`, t.id)));
+  list.forEach((t) => sel.append(new Option(`${t.kind === "grabada" ? "⏺ " : ""}${t.name} · ${kmOf(t.segs).toFixed(1)} km`, t.id)));
   sel.value = filt.trk; sel.disabled = !list.length;
   const del = $("fTrkDel"); del.disabled = !filt.trk; delete del.dataset.armed; del.textContent = "Eliminar ruta"; del.className = "ghost";
 }
@@ -882,8 +882,10 @@ function setTab(t) {
   document.body.classList.toggle("tab-plan", t === "plan");
   document.body.classList.toggle("tab-mec", t === "mec");
   document.body.classList.toggle("tab-car", t === "car");
-  [["tabLibro", "libro"], ["tabPlan", "plan"], ["tabMec", "mec"], ["tabCar", "car"]].forEach(([id, k]) => $(id).setAttribute("aria-selected", String(t === k)));
+  document.body.classList.toggle("tab-rec", t === "rec");
+  [["tabLibro", "libro"], ["tabPlan", "plan"], ["tabRec", "rec"], ["tabMec", "mec"], ["tabCar", "car"]].forEach(([id, k]) => $(id).setAttribute("aria-selected", String(t === k)));
   if (t === "mec") { mec = mec || setupMecanica({ sb, canEdit, user: () => state.user, writeErr }); mec.show(); }
+  if (t === "rec") renderRecTab();
   if (t === "car") { coches = coches || setupCoches({ sb, canEdit, user: () => state.user, writeErr, toJpeg }); coches.show(); }
   if (drawing) { drawing = null; renderDraw(); }
   renderPlan(); renderMap();
@@ -893,6 +895,67 @@ $("tabLibro").onclick = () => setTab("libro");
 $("tabPlan").onclick = () => setTab("plan");
 $("tabMec").onclick = () => setTab("mec");
 $("tabCar").onclick = () => setTab("car");
+$("tabRec").onclick = () => setTab("rec");
+
+// every recorded route of every year, grouped by year and stage
+const fmtDur = (secs) => secs ? `${Math.floor(secs / 3600)} h ${String(Math.floor(secs / 60) % 60).padStart(2, "0")} min` : "";
+function renderRecTab() {
+  if (state.tab !== "rec") return;
+  const box = $("recAll"); box.textContent = "";
+  const recs = state.tracks.filter((t) => t.kind === "grabada");
+  if (!recs.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "Aún no hay rutas grabadas."; box.append(p); return; }
+  ralliesSorted().forEach((r) => {
+    const mine = recs.filter((t) => t.rallyId === r.id);
+    if (!mine.length) return;
+    const h = document.createElement("h3"); h.textContent = r.name || String(r.year); box.append(h);
+    const stages = [...new Set(mine.map(stageKey))].sort((a, b) => a === "" ? 1 : b === "" ? -1 : natural(a, b));
+    stages.forEach((st) => {
+      const sec = document.createElement("div"); sec.className = "recstage";
+      const nW = state.wps.filter((w) => w.rallyId === r.id && stageKey(w) === st).length;
+      const nT = state.tracks.filter((t) => t.rallyId === r.id && stageKey(t) === st && t.kind !== "grabada").length;
+      const h4 = document.createElement("h4");
+      h4.textContent = stageLabel(st) + (st !== "" ? ` · ${nW} WP${nT ? " · " + nT + " traza" + (nT > 1 ? "s" : "") : ""}` : " (no están en ninguna etapa)");
+      sec.append(h4);
+      const ul = document.createElement("ul"); ul.className = "tracks";
+      mine.filter((t) => stageKey(t) === st).sort((a, b) => String(b.created).localeCompare(String(a.created))).forEach((t) => {
+        const li = document.createElement("li");
+        const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = "#e91e63";
+        const nm = document.createElement("span"); nm.className = "em";
+        nm.textContent = `${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (fmtDur((t.meta || {}).secs) ? " · " + fmtDur(t.meta.secs) : "");
+        const see = document.createElement("button"); see.type = "button"; see.className = "hl"; see.textContent = st !== "" ? "Ver con la etapa" : "Ver en el mapa";
+        see.onclick = () => {
+          state.rallyId = r.id; state.stageFilter = st !== "" ? st : "all"; $("stageNo").value = st;
+          filt.rec = t.id; filt.trk = ""; filt.only = null; filt.tracks = true; $("fTracks").checked = true;
+          setTab("libro"); render();
+          setTimeout(() => { if (lmap) { lmap.fitBounds([...t.segs.flat(), ...mapWps().map((w) => [w.lat, w.lon])], { padding: [30, 30] }); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); } }, 100);
+        };
+        const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
+        gx.onclick = () => download(slug(t.name) + ".gpx", buildGpx([], t.name, [t], true), "application/gpx+xml");
+        li.append(sw, nm, see, gx);
+        if (canEdit()) {
+          // move the recording to another stage of the same year
+          const sel = document.createElement("select"); sel.title = "Pasar a otra etapa";
+          const opts = [...new Set([...state.wps.filter((w) => w.rallyId === r.id).map(stageKey), ...state.tracks.filter((x) => x.rallyId === r.id).map(stageKey), st])].filter((k) => k !== "").sort(natural);
+          sel.append(new Option("Sin etapa", ""));
+          opts.forEach((k) => sel.append(new Option(stageLabel(k), k)));
+          sel.value = st;
+          sel.onchange = async () => {
+            try { must(await sb.from("tracks").update({ stage: sel.value }).eq("id", t.id)); $("recTabMsg").textContent = `«${t.name}» pasada a ${stageLabel(sel.value).toLowerCase()}.`; await loadAll(); renderRecTab(); }
+            catch (e) { $("recTabMsg").textContent = writeErr(e); sel.value = st; }
+          };
+          const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
+          del.onclick = async () => {
+            if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
+            try { must(await sb.from("tracks").delete().eq("id", t.id)); if (filt.rec === t.id) filt.rec = null; await loadAll(); renderRecTab(); } catch (e) { $("recTabMsg").textContent = writeErr(e); }
+          };
+          li.append(sel, del);
+        }
+        ul.append(li);
+      });
+      sec.append(ul); box.append(sec);
+    });
+  });
+}
 // the proposals are kept per stage, so the phone or tablet sees the ones calculated on the computer
 const planKey = () => "plan:" + state.rallyId + ":" + state.stageFilter;
 async function savePlan(note) {

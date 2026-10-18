@@ -242,7 +242,7 @@ body:not(.tab-mec) #mecBox { display: none }
 .mecadd { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin-top: 18px }
 .mecadd label.btn { padding: 7px 12px; font-size: .85rem; font-weight: 600; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; text-transform: none; letter-spacing: 0 }
 .dir-arrow { background: none; border: 0; pointer-events: none; }
-.dir-arrow svg { width: 24px; height: 24px; display: block; filter: drop-shadow(0 0 1px #fff); }
+.dir-arrow svg { width: 14px; height: 14px; display: block }
 body:not(.tab-car) #carBox { display: none }
 .tab-car .desk { display: none }
 #carList { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin: 8px 0 14px }

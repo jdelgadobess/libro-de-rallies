@@ -366,7 +366,7 @@ const arrow = (pts, color) => { if (pts.length > 1) arrowLines.push({ pts, color
 function drawArrows() {
   if (!arrowLayer) return;
   arrowLayer.clearLayers();
-  const view = lmap.getBounds().pad(0.1), STEP = 110;
+  const view = lmap.getBounds().pad(0.1), STEP = 80;
   arrowLines.forEach(({ pts, color }) => {
     let left = STEP / 2, prev = lmap.latLngToLayerPoint(pts[0]);
     for (let i = 1; i < pts.length; i++) {
@@ -376,8 +376,8 @@ function drawArrows() {
         for (let d = left; d <= len; d += STEP) {
           const at = lmap.layerPointToLatLng(L.point(prev.x + (cur.x - prev.x) * d / len, prev.y + (cur.y - prev.y) * d / len));
           if (!view.contains(at)) continue;
-          L.marker(at, { pane: "arrows", interactive: false, keyboard: false, icon: L.divIcon({ className: "dir-arrow", iconSize: [24, 24], iconAnchor: [12, 12],
-            html: `<svg viewBox="0 0 24 24" style="transform:rotate(${ang.toFixed(0)}deg)"><circle cx="12" cy="12" r="10" fill="${color}" stroke="#000" stroke-width="1.5"/><path d="M8 6 L17 12 L8 18 L10.5 12 Z" fill="#fff" stroke="#000" stroke-width="1" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
+          L.marker(at, { pane: "arrows", interactive: false, keyboard: false, icon: L.divIcon({ className: "dir-arrow", iconSize: [14, 14], iconAnchor: [7, 7],
+            html: `<svg viewBox="0 0 14 14" style="transform:rotate(${ang.toFixed(0)}deg)"><path d="M4 2.5 L10 7 L4 11.5" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/><path d="M4 2.5 L10 7 L4 11.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
         }
         left = ((left - len) % STEP + STEP) % STEP;
         if (left === 0) left = STEP;

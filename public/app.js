@@ -68,7 +68,8 @@ const rallyWps = () => state.wps.filter((w) => w.rallyId === state.rallyId && Nu
 const stagesOf = (list) => [...new Set(list.map(stageKey))].sort((a, b) => (a === "") - (b === "") || natural(a, b));
 const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId);
 const allStages = () => stagesOf([...rallyWps(), ...rallyTracks(), ...(currentStage() ? [{ stage: currentStage() }] : [])]);
-const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.only ? t.id === filt.only : state.stageFilter === "all" || stageKey(t) === state.stageFilter) : [];
+const stageTracks = () => rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter);
+const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.only ? t.id === filt.only : filt.trk ? t.id === filt.trk : state.stageFilter === "all" || stageKey(t) === state.stageFilter) : [];
 // waypoints a track joins, in the order they were joined, and the sum of their points
 const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id === id)).filter(Boolean);
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
@@ -88,7 +89,7 @@ const ptsIn = (...texts) => { const m = texts.join(" ").match(/(\d{1,4})\s*(?:pt
 const seqOf = (w) => typeof w.seq === "number" ? w.seq : Date.parse(w.created || 0) || 0;
 const wpOrder = (a, b) => ((stageKey(a) === "") - (stageKey(b) === "")) || natural(stageKey(a), stageKey(b)) || (orderKey(a) - orderKey(b)) || (seqOf(a) - seqOf(b)) || natural(a.name, b.name);
 // table filters: stage, text, WP number range; the per-row tick decides what goes to the map
-const filt = { text: "", from: null, to: null, tracks: true, only: null, off: new Set(), ptsOff: new Set() };
+const filt = { text: "", from: null, to: null, tracks: true, trk: "", only: null, off: new Set(), ptsOff: new Set() };
 const ptsKey = (w) => w.pts ? String(w.pts) : "sin";
 const textOf = (w) => [w.name, w.page && "pág " + w.page, w.desc].filter(Boolean).join(" ").toLowerCase();
 const visibleWps = () => rallyWps().filter((w) => {
@@ -721,7 +722,28 @@ const tdrop = $("trkDrop");
 tdrop.addEventListener("dragover", (e) => { e.preventDefault(); tdrop.classList.add("over"); });
 tdrop.addEventListener("dragleave", () => tdrop.classList.remove("over"));
 tdrop.addEventListener("drop", (e) => { e.preventDefault(); tdrop.classList.remove("over"); importTracks([...e.dataTransfer.files]); });
+// the route picker by "Ver track": show only one route of the stage, or delete it
+function renderTrkPick() {
+  const list = stageTracks().sort((a, b) => natural(a.name, b.name));
+  if (filt.trk && !list.some((t) => t.id === filt.trk)) filt.trk = "";
+  const sel = $("fTrk"); sel.textContent = "";
+  sel.append(new Option(list.length ? `Todas (${list.length})` : "No hay rutas", ""));
+  list.forEach((t) => sel.append(new Option(`${t.name} · ${kmOf(t.segs).toFixed(1)} km`, t.id)));
+  sel.value = filt.trk; sel.disabled = !list.length;
+  const del = $("fTrkDel"); del.disabled = !filt.trk; delete del.dataset.armed; del.textContent = "Eliminar ruta"; del.className = "ghost";
+}
+$("fTrk").onchange = (e) => { filt.trk = e.target.value; if (filt.trk) { filt.tracks = true; $("fTracks").checked = true; } fitKey = ""; renderTrkPick(); renderTracks(); renderMap(); renderDownloads(); };
+$("fTrkDel").onclick = async () => {
+  const del = $("fTrkDel"), t = rallyTracks().find((x) => x.id === filt.trk); if (!t) return;
+  if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = `¿Eliminar «${t.name}»?`; del.className = "warn"; return; }
+  try {
+    must(await sb.from("tracks").delete().eq("id", t.id));
+    if (filt.only === t.id) filt.only = null;
+    filt.trk = ""; await loadAll();
+  } catch (e) { del.textContent = "Eliminar ruta"; delete del.dataset.armed; del.className = "ghost"; alert(writeErr(e)); }
+};
 function renderTracks() {
+  renderTrkPick();
   const ul = $("trackList"); ul.textContent = "";
   visibleTracks().sort((a, b) => natural(stageKey(a), stageKey(b)) || natural(a.created, b.created)).forEach((t) => {
     const li = document.createElement("li");

@@ -36,9 +36,9 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   function ui() {
     $("gpsBtn").textContent = watch === null ? "📍 Mi posición (GPS)" : follow ? "📍 GPS activo · siguiendo" : "📍 GPS activo · centrar";
     $("gpsBtn").className = watch === null ? "ghost" : "hl";
-    $("recBtn").textContent = rec ? "⏹ Parar y guardar" : "⏺ Grabar ruta";
+    $("recBtn").textContent = rec ? "⏹ Terminar ruta" : "⏺ Grabar ruta";
     $("recBtn").className = rec ? "warn" : "ghost";
-    $("recBtn").hidden = !canEdit();
+    $("recBtn").hidden = !canEdit() || !!(fol && rec); // while following a route its own button ends it
     $("recDrop").hidden = !rec;
     $("gpsMeasure").hidden = watch === null;
     $("recStage").hidden = !canEdit(); $("recStage").disabled = !!rec;
@@ -180,6 +180,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     banner.querySelector("#offTxt").textContent = fol && fol.quiet ? `Fuera de la ruta: ${Math.round(d)} m (sin avisos hasta que vuelvas)` : `⚠ Te estás desviando: ${Math.round(d)} m de la ruta`;
   }
   function followUi() {
+    ui();
     $("followBtn").textContent = fol ? "⏹ Terminar ruta" : "▶ Iniciar ruta";
     $("followBtn").className = fol ? "warn" : "hl";
     $("followSel").disabled = !!fol;
@@ -229,7 +230,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     msg(on ? "Toca un waypoint o cualquier punto del mapa para ver la distancia desde tu posición." : "", true);
   }
   $("gpsMeasure").onclick = measureHere;
-  $("recBtn").onclick = () => { if (rec) stopRec(); else startRec(false); };
+  $("recBtn").onclick = () => { if (rec) { say("Ruta terminada"); stopRec(); } else startRec(false); };
   $("recDrop").onclick = () => {
     const b = $("recDrop");
     if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "¿Descartar la grabación?"; return; }

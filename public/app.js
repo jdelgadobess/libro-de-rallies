@@ -417,6 +417,20 @@ function loadMaps() {
   });
   renderMap();
 }
+// the map box (with its bars) fills the screen; real full screen where the browser allows it, otherwise the whole window
+const mapBox = () => $("gmap").closest(".mapbox");
+function setMapFull(on) {
+  mapBox().classList.toggle("full", on); document.body.classList.toggle("mapfull", on);
+  $("mapFull").textContent = on ? "✕ Salir de pantalla completa" : "⛶ Pantalla completa";
+  if (lmap) setTimeout(() => lmap.invalidateSize(), 50);
+}
+$("mapFull").onclick = async () => {
+  const on = !mapBox().classList.contains("full");
+  if (on) { setMapFull(true); try { if (mapBox().requestFullscreen) await mapBox().requestFullscreen(); } catch (e) {} }
+  else { if (document.fullscreenElement) await document.exitFullscreen().catch(() => {}); setMapFull(false); }
+};
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && mapBox().classList.contains("full")) setMapFull(false); setTimeout(() => lmap && lmap.invalidateSize(), 50); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && mapBox().classList.contains("full") && !document.fullscreenElement) setMapFull(false); });
 function renderMap() {
   if (!lmap) return;
   layer.clearLayers(); arrowLines = []; drawArrows();

@@ -299,3 +299,8 @@ body:not(.tab-car) #carBox { display: none }
 .trkpick label { display: grid; gap: 4px; flex: 1 1 220px }
 .trkpick select { width: 100% }
 .trkpick button { padding: 7px 12px }
+#mapFull { padding: 5px 10px; font-size: .82rem; margin-left: auto }
+.mapbox.full { position: fixed; inset: 0; z-index: 3000; margin: 0; max-width: none; width: 100%; height: 100%; border-radius: 0; display: flex; flex-direction: column; background: var(--sheet-solid); overflow: hidden; padding: 8px 12px; box-sizing: border-box }
+.mapbox.full .gmap { flex: 1 1 auto; aspect-ratio: auto; height: auto; min-height: 0 }
+.mapbox.full > *:not(.gmap) { flex: none }
+body.mapfull { overflow: hidden }

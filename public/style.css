@@ -306,6 +306,7 @@ body:not(.tab-car) #carBox { display: none }
 body.mapfull { overflow: hidden }
 .gpsbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line) }
 .gpsbar button { padding: 6px 12px; font-size: .85rem }
+.gpsbar select { padding: 5px 8px; font-size: .85rem; max-width: 14em }
 .gpsbar .rec { font: 700 .85rem var(--mono); color: #c2185b }
 .gpsbar .msg { font-size: .8rem }
 .recbox { padding: 6px 12px; border-bottom: 1px solid var(--line) }

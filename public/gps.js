@@ -24,6 +24,8 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     $("recBtn").className = rec ? "warn" : "ghost";
     $("recBtn").hidden = !canEdit();
     $("recDrop").hidden = !rec;
+    $("recStage").hidden = !canEdit(); $("recStage").disabled = !!rec;
+    if (rec) $("recStage").value = rec.stage;
     if (rec) {
       const secs = ((rec.end || Date.now()) - rec.start) / 1000;
       $("recInfo").textContent = `Grabando · ${kmOf(rec.segs).toFixed(2)} km · ${fmtTime(secs)}`;
@@ -92,7 +94,8 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
 
   async function startRec(resumed) {
-    if (!rallyId()) { msg("Elige primero el año en el paso 1."); return; }
+    if (!rallyId()) { msg("Elige primero el año en el paso 1.", true); return; }
+    if (!resumed && !stage()) { msg("Este año no tiene etapas con waypoints: importa primero los waypoints de la etapa y graba sobre ella.", true); return; }
     if (!startWatch()) return;
     if (!resumed) rec = { start: Date.now(), segs: [], rally: rallyId(), stage: stage() };
     idb.put("kv", rec, "rec").catch(() => {});
@@ -116,7 +119,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     idb.del("kv", "rec").catch(() => {});
     recLayer.clearLayers(); ui();
     if (!r.segs.some((s) => s.length > 1)) { msg("La grabación no tenía recorrido: no se ha guardado.", true); return; }
-    try { const row = await upload(r); msg(`Ruta guardada en «Rutas grabadas»: ${row.meta.km.toFixed(2)} km en ${fmtTime(row.meta.secs)}.`, true); onSaved(); }
+    try { const row = await upload(r); msg(`Ruta guardada en la etapa ${r.stage} («Rutas grabadas»): ${row.meta.km.toFixed(2)} km en ${fmtTime(row.meta.secs)}.`, true); onSaved(); }
     catch (e) {
       // no connection: kept on the phone and sent as soon as there is internet
       let pend = []; try { pend = (await idb.get("kv", "recPending")) || []; } catch (er) {}

@@ -409,7 +409,7 @@ function loadMaps() {
   if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
   setupLayers(lmap);
-  setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => (state.stageFilter !== "all" ? state.stageFilter : currentStage()), user: () => state.user, writeErr, onSaved: () => loadAll() });
+  setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll() });
   layer = L.layerGroup().addTo(lmap);
   lmap.createPane("arrows").style.zIndex = 450;
   arrowLayer = L.layerGroup().addTo(lmap);
@@ -803,7 +803,18 @@ $("stageDel").onclick = async () => {
   sd.disabled = false; delete sd.dataset.armed; sd.dataset.stage = "";
 };
 // the routes driven with the phone's GPS, newest first
+// recordings always go to a stage that already has waypoints: the one being viewed, or the one picked here
+function renderRecStage() {
+  const sel = $("recStage"); if (!sel || sel.disabled) return;
+  const st = stagesOf(rallyWps()).filter((k) => k !== "");
+  const want = state.stageFilter !== "all" && st.includes(state.stageFilter) ? state.stageFilter : st.includes(sel.value) ? sel.value : st[0] || "";
+  sel.textContent = "";
+  if (!st.length) sel.append(new Option("Sin etapas con waypoints", ""));
+  st.forEach((k) => sel.append(new Option(`${stageLabel(k)} (${rallyWps().filter((w) => stageKey(w) === k).length} WP)`, k)));
+  sel.value = want;
+}
 function renderRecorded() {
+  renderRecStage();
   const list = rallyTracks().filter((t) => t.kind === "grabada").sort((a, b) => String(b.created).localeCompare(String(a.created)));
   $("recBox").hidden = !list.length;
   $("recSum").textContent = `Rutas grabadas (${list.length})`;
@@ -817,7 +828,10 @@ function renderRecorded() {
     const see = document.createElement("button"); see.type = "button"; see.className = filt.rec === t.id ? "hl" : "ghost"; see.textContent = filt.rec === t.id ? "Ocultar" : "Ver en el mapa";
     see.onclick = () => {
       filt.rec = filt.rec === t.id ? null : t.id; filt.tracks = true; $("fTracks").checked = true;
-      renderRecorded(); renderMap(); if (filt.rec && lmap) lmap.fitBounds(t.segs.flat(), { padding: [30, 30] });
+      // a recorded route is seen with its stage's waypoints
+      if (filt.rec && stageKey(t) !== "") { state.stageFilter = stageKey(t); $("stageNo").value = stageKey(t); filt.trk = ""; filt.only = null; state.hi = null; render(); }
+      else { renderRecorded(); renderMap(); }
+      if (filt.rec && lmap) lmap.fitBounds([...t.segs.flat(), ...mapWps().map((w) => [w.lat, w.lon])], { padding: [30, 30] });
     };
     const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
     gx.onclick = () => routeGpx(t.name, t.segs, [], stageKey(t), t.rallyId);
@@ -1414,3 +1428,5 @@ $("memberForm").addEventListener("submit", async (e) => {
     ? `Listo. Pásale a ${email} esta dirección, su correo y la contraseña «${password}». Puede cambiarla al entrar.`
     : `Listo. ${email} ya puede entrar con su contraseña de siempre.`;
 });
+// picking where to record also shows that stage, with its waypoints
+$("recStage").onchange = (e) => { if (e.target.value) pickStage(e.target.value); };

@@ -424,6 +424,7 @@ function loadMaps() {
     return d;
   } });
   new Clear().addTo(lmap);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && measure.length && !drawing) { measure = []; state.hi = null; renderTable(); renderMap(); } });
   lmap.on("click", (e) => {
     if (drawing) { drawStep(); drawing.pts.push([Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6]); drawing.wpAt.push(null); renderMap(); renderDraw(); return; }
     // a tap on the map is a measuring point too

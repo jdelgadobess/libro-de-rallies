@@ -244,7 +244,16 @@ function render() {
   const stList = allStages();
   if (state.stageFilter !== "all" && !stList.includes(state.stageFilter)) state.stageFilter = "all";
   $("allStages").setAttribute("aria-pressed", String(state.stageFilter === "all"));
-  $("allStages").textContent = "Todas · " + rallyWps().length + " WP";
+  $("allStages").textContent = "Todas las etapas";
+  // one chip per stage with its own waypoints
+  const chips = $("stageChips"); chips.textContent = "";
+  stList.forEach((k) => {
+    const n = rallyWps().filter((w) => stageKey(w) === k).length; if (k === "" && !n) return;
+    const c = document.createElement("button"); c.type = "button"; c.className = "chip";
+    c.setAttribute("aria-pressed", String(state.stageFilter === k));
+    c.textContent = `${stageLabel(k)} · ${n} WP`; c.onclick = () => pickStage(k);
+    chips.append(c);
+  });
   $("stageHint").textContent = state.stageFilter === "all"
     ? "Viendo todas las etapas. Escribe un número para ver solo esa etapa" + (canEdit() ? " y guardar en ella los waypoints nuevos." : ".")
     : `Viendo la etapa ${state.stageFilter}: ${rallyWps().filter((w) => stageKey(w) === state.stageFilter).length} WP.` + (canEdit() ? " Los waypoints nuevos se guardan aquí." : "");

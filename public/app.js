@@ -1324,16 +1324,18 @@ function buildGpx(list, title, trks = [], keepOrder = false, extra = []) {
   const nm = (w) => pad ? String(w.name).replace(/\d+/, (d) => d.padStart(3, "0")) : String(w.name);
   const tot = sumPts(list);
   const info = (keepOrder && list.length ? `${list.length} waypoints en la ruta · ${tot} pts` : "") + (extra.length ? `${list.length ? " · " : ""}${extra.length} fuera de la ruta · ${sumPts(extra)} pts` : "");
-  let o = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Libro de Rallies" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${xe(title)}</name>${info ? `<desc>${xe(info)}</desc>` : ""}</metadata>\n`;
+  let o = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Libro de Rallies" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpx_style="http://www.topografix.com/GPX/gpx_style/0/2" xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3">\n  <metadata><name>${xe(title)}</name>${info ? `<desc>${xe(info)}</desc>` : ""}</metadata>\n`;
   (keepOrder ? list : list.slice().sort(wpOrder)).forEach((w) => {
-    o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(descOf(w))}</desc>\n    <sym>${extra.length ? "Flag, Green" : "Flag"}</sym>\n  </wpt>\n`;
+    o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(descOf(w))}</desc>\n    <sym>Flag, Red</sym>\n  </wpt>\n`;
   });
   // the stage's other waypoints, for picking up more if there is time
   extra.slice().sort(wpOrder).forEach((w) => {
     o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(["Fuera de la ruta", descOf(w)].filter(Boolean).join(" · "))}</desc>\n    <sym>Flag, Red</sym>\n  </wpt>\n`;
   });
   trks.forEach((t) => {
-    o += `  <trk>\n    <name>${xe(t.name)}</name>\n` + (info ? `    <desc>${xe(info)}</desc>\n` : "");
+    // the route in red, in the GPS apps that read a line colour (gpx_style) and in Garmin (DisplayColor)
+    o += `  <trk>\n    <name>${xe(t.name)}</name>\n` + (info ? `    <desc>${xe(info)}</desc>\n` : "") +
+      `    <extensions><gpx_style:line><gpx_style:color>FF0000</gpx_style:color><gpx_style:width>4</gpx_style:width></gpx_style:line><gpxx:TrackExtension><gpxx:DisplayColor>Red</gpxx:DisplayColor></gpxx:TrackExtension></extensions>\n`;
     t.segs.forEach((seg) => { o += `    <trkseg>\n` + seg.map(([la, lo]) => `      <trkpt lat="${la.toFixed(6)}" lon="${lo.toFixed(6)}"/>\n`).join("") + `    </trkseg>\n`; });
     o += `  </trk>\n`;
   });

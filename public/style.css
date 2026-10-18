@@ -357,3 +357,7 @@ body:not(.tab-rec) #recTab { display: none }
 .navbox.wpnav > div { display: flex; flex-direction: column }
 .navbox.wpnav svg { width: 56px; height: 56px }
 .navbox .ok { font-size: 1.3rem; font-weight: 700; color: #7CFC9A }
+
+/* phone, tablet and full screen: no text line under the map, so the map gets the room (distances show on the map itself) */
+@media (pointer: coarse) { .mapbox .scale { display: none } }
+.mapbox.full .scale { display: none }

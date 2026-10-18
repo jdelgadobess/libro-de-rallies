@@ -304,3 +304,11 @@ body:not(.tab-car) #carBox { display: none }
 .mapbox.full .gmap { flex: 1 1 auto; aspect-ratio: auto; height: auto; min-height: 0 }
 .mapbox.full > *:not(.gmap) { flex: none }
 body.mapfull { overflow: hidden }
+.gpsbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line) }
+.gpsbar button { padding: 6px 12px; font-size: .85rem }
+.gpsbar .rec { font: 700 .85rem var(--mono); color: #c2185b }
+.gpsbar .msg { font-size: .8rem }
+.recbox { padding: 6px 12px; border-bottom: 1px solid var(--line) }
+.recbox summary { cursor: pointer; font-weight: 700; font-size: .9rem }
+.recbox ul { margin-top: 6px }
+.gps-head { background: none; border: 0 } .gps-head svg { width: 34px; height: 34px; display: block }

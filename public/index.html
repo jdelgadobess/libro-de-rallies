@@ -238,6 +238,17 @@
           <span class="hint" id="drawInfo"></span>
           <span class="msg" id="drawMsg"></span>
         </div>
+        <div class="gpsbar">
+          <button type="button" class="ghost" id="gpsBtn">📍 Mi posición (GPS)</button>
+          <button type="button" class="ghost" id="recBtn" hidden>⏺ Grabar ruta</button>
+          <button type="button" class="ghost" id="recDrop" hidden>Descartar</button>
+          <span class="rec" id="recInfo"></span>
+          <span class="msg" id="gpsMsg"></span>
+        </div>
+        <details class="recbox" id="recBox" hidden>
+          <summary id="recSum">Rutas grabadas</summary>
+          <ul class="tracks" id="recList"></ul>
+        </details>
         <div class="layersbar">
           <label>Caminos <select id="lyBase"><option value="osm">OpenStreetMap</option><option value="topo">Topográfico</option><option value="none">Ninguno</option></select></label>
           <label class="chk"><input type="checkbox" id="lySat" checked> Satélite</label>

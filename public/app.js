@@ -2,6 +2,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { setupLayers, idb, offroadMap } from "./mapas.js";
 import { setupMecanica } from "./mecanica.js";
 import { setupCoches } from "./coches.js";
+import { setupGps } from "./gps.js";
 import { buildGraph, matrix, proposals, geometry, nearRoute, addTo, satImage, meters } from "./rutas.js";
 
 const CFG = window.APP_CONFIG;
@@ -10,7 +11,7 @@ const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
 // database rows <-> the shape the page works with
 const rallyIn = (r) => ({ id: r.id, year: r.year, name: r.name, created: r.created_at });
 const wpIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, lat: r.lat, lon: r.lon, page: r.page, desc: r.descr, pts: r.points ?? ptsIn(r.descr || "") ?? null, seq: r.seq, created: r.created_at });
-const trackIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, segs: r.points, wps: r.wps || [], created: r.created_at });
+const trackIn = (r) => ({ id: r.id, rallyId: r.rally_id, stage: r.stage, name: r.name, segs: r.points, wps: r.wps || [], created: r.created_at, kind: r.kind || "", meta: r.meta || {} });
 const wpOut = (w) => {
   const o = { rally_id: w.rallyId, stage: w.stage, name: w.name, lat: w.lat, lon: w.lon, page: w.page, descr: w.desc };
   if (w.pts !== undefined) o.points = w.pts || null;
@@ -69,7 +70,7 @@ const stagesOf = (list) => [...new Set(list.map(stageKey))].sort((a, b) => (a ==
 const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId);
 const allStages = () => stagesOf([...rallyWps(), ...rallyTracks(), ...(currentStage() ? [{ stage: currentStage() }] : [])]);
 const stageTracks = () => rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter);
-const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.only ? t.id === filt.only : filt.trk ? t.id === filt.trk : state.stageFilter === "all" || stageKey(t) === state.stageFilter) : [];
+const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.rec === t.id || (filt.only ? t.id === filt.only : filt.trk ? t.id === filt.trk : state.stageFilter === "all" || stageKey(t) === state.stageFilter)) : [];
 // waypoints a track joins, in the order they were joined, and the sum of their points
 const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id === id)).filter(Boolean);
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
@@ -89,7 +90,7 @@ const ptsIn = (...texts) => { const m = texts.join(" ").match(/(\d{1,4})\s*(?:pt
 const seqOf = (w) => typeof w.seq === "number" ? w.seq : Date.parse(w.created || 0) || 0;
 const wpOrder = (a, b) => ((stageKey(a) === "") - (stageKey(b) === "")) || natural(stageKey(a), stageKey(b)) || (orderKey(a) - orderKey(b)) || (seqOf(a) - seqOf(b)) || natural(a.name, b.name);
 // table filters: stage, text, WP number range; the per-row tick decides what goes to the map
-const filt = { text: "", from: null, to: null, tracks: true, trk: "", only: null, off: new Set(), ptsOff: new Set() };
+const filt = { text: "", from: null, to: null, tracks: true, trk: "", rec: null, only: null, off: new Set(), ptsOff: new Set() };
 const ptsKey = (w) => w.pts ? String(w.pts) : "sin";
 const textOf = (w) => [w.name, w.page && "pág " + w.page, w.desc].filter(Boolean).join(" ").toLowerCase();
 const visibleWps = () => rallyWps().filter((w) => {
@@ -407,6 +408,7 @@ function loadMaps() {
   if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
   setupLayers(lmap);
+  setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => (state.stageFilter !== "all" ? state.stageFilter : currentStage()), user: () => state.user, writeErr, onSaved: () => loadAll() });
   layer = L.layerGroup().addTo(lmap);
   lmap.createPane("arrows").style.zIndex = 450;
   arrowLayer = L.layerGroup().addTo(lmap);
@@ -774,8 +776,39 @@ $("stageDel").onclick = async () => {
   } catch (e) { sd.textContent = writeErr(e); }
   sd.disabled = false; delete sd.dataset.armed; sd.dataset.stage = "";
 };
+// the routes driven with the phone's GPS, newest first
+function renderRecorded() {
+  const list = rallyTracks().filter((t) => t.kind === "grabada").sort((a, b) => String(b.created).localeCompare(String(a.created)));
+  $("recBox").hidden = !list.length;
+  $("recSum").textContent = `Rutas grabadas (${list.length})`;
+  const ul = $("recList"); ul.textContent = "";
+  list.forEach((t) => {
+    const li = document.createElement("li");
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = stageColor(stageKey(t));
+    const m = t.meta || {}, secs = m.secs || 0;
+    const nm = document.createElement("span"); nm.className = "em";
+    nm.textContent = `${t.name}${stageKey(t) ? " · " + stageLabel(stageKey(t)) : ""} · ${kmOf(t.segs).toFixed(1)} km` + (secs ? ` · ${Math.floor(secs / 3600)} h ${String(Math.floor(secs / 60) % 60).padStart(2, "0")} min` : "");
+    const see = document.createElement("button"); see.type = "button"; see.className = filt.rec === t.id ? "hl" : "ghost"; see.textContent = filt.rec === t.id ? "Ocultar" : "Ver en el mapa";
+    see.onclick = () => {
+      filt.rec = filt.rec === t.id ? null : t.id; filt.tracks = true; $("fTracks").checked = true;
+      renderRecorded(); renderMap(); if (filt.rec && lmap) lmap.fitBounds(t.segs.flat(), { padding: [30, 30] });
+    };
+    const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
+    gx.onclick = () => download(slug(t.name) + ".gpx", buildGpx([], t.name, [t], true), "application/gpx+xml");
+    li.append(sw, nm, see, gx);
+    if (canEdit()) {
+      const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
+      del.onclick = async () => {
+        if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
+        try { must(await sb.from("tracks").delete().eq("id", t.id)); if (filt.rec === t.id) filt.rec = null; await loadAll(); } catch (e) { $("gpsMsg").textContent = writeErr(e); }
+      };
+      li.append(del);
+    }
+    ul.append(li);
+  });
+}
 function renderTracks() {
-  renderTrkPick();
+  renderTrkPick(); renderRecorded();
   const ul = $("trackList"); ul.textContent = "";
   visibleTracks().sort((a, b) => natural(stageKey(a), stageKey(b)) || natural(a.created, b.created)).forEach((t) => {
     const li = document.createElement("li");

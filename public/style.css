@@ -335,3 +335,13 @@ body:not(.tab-rec) #recTab { display: none }
 .addpop .b { grid-column: 1 / -1; display: flex; gap: 6px }
 .addpop .b button { padding: 6px 12px }
 .addpop .e { grid-column: 1 / -1; color: #c62828; font-size: .8rem; margin: 0 }
+
+/* full screen: the bars go into a menu that opens on the right, over the map */
+#mapMenuBtn, #fullStatus { display: none }
+.mapbox.full { position: fixed }
+.mapbox.full #mapMenuBtn { display: inline-block; order: -1 }
+.mapbox.full #fullStatus { display: inline; font-size: .8rem }
+.mapbox.full .mapmenu { position: absolute; z-index: 1200; top: 64px; right: 12px; width: min(440px, calc(100% - 24px)); max-height: calc(100% - 110px); overflow-y: auto; background: var(--sheet-solid); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); display: none }
+.mapbox.full .mapmenu.open { display: block }
+.mapbox.full .mapmenu > * { border-bottom: 1px solid var(--line) }
+.mapbox.full .mapmenu > *:last-child { border-bottom: 0 }

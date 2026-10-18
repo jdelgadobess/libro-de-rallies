@@ -460,8 +460,20 @@ function loadMaps() {
 }
 // the map box (with its bars) fills the screen; real full screen where the browser allows it, otherwise the whole window
 const mapBox = () => $("gmap").closest(".mapbox");
+// in full screen the bars live in a menu on the right; the button opens and closes it without moving the map
+function setMenu(open) {
+  const head = mapBox().querySelector(".boxhead");
+  if (open && head) $("mapMenu").style.top = (head.offsetTop + head.offsetHeight + 6) + "px";
+  $("mapMenu").classList.toggle("open", open);
+  $("mapMenuBtn").setAttribute("aria-expanded", String(open));
+  $("mapMenuBtn").textContent = open ? "✕ Cerrar menú" : "☰ Menú";
+}
+$("mapMenuBtn").onclick = () => setMenu(!$("mapMenu").classList.contains("open"));
+// what is going on (recording, following a route) stays in sight with the menu closed
+setInterval(() => { if (!document.body.classList.contains("mapfull")) return; $("fullStatus").textContent = [$("recInfo").textContent, $("followInfo").textContent].filter(Boolean).join(" · "); }, 1000);
 function setMapFull(on) {
   mapBox().classList.toggle("full", on); document.body.classList.toggle("mapfull", on);
+  setMenu(false); $("fullStatus").textContent = "";
   $("mapFull").textContent = on ? "✕ Salir de pantalla completa" : "⛶ Pantalla completa";
   if (lmap) setTimeout(() => lmap.invalidateSize(), 50);
 }

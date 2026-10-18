@@ -224,6 +224,8 @@
         <div class="boxhead">
           <h2 id="mapTitle">Mapa</h2>
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
+          <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
+          <span class="rec" id="fullStatus"></span>
           <span class="fmt">Coordenadas
             <select id="fmt" aria-label="Formato de coordenadas">
               <option value="dm">GG°MM.mmm'</option>
@@ -232,6 +234,7 @@
             </select>
           </span>
         </div>
+        <div class="mapmenu" id="mapMenu">
         <div class="drawbar" data-edit>
           <button type="button" class="ghost" id="drawStart">Dibujar ruta</button>
           <button type="button" class="ghost" id="addStart">📍 Crear waypoints en el mapa</button>
@@ -276,6 +279,7 @@
           <label class="op">Opacidad <input type="range" id="lyOp" min="0" max="100" step="5" value="100"> <span id="lyOpTxt">100 %</span></label>
           <span id="lyFiles"></span>
           <span class="msg" id="lyMsg"></span>
+        </div>
         </div>
         <div class="gmap" id="gmap"></div>
         <div class="scale"><span id="scaleTxt"></span><span id="scaleHelp">Toca waypoints o cualquier punto para ver distancia y rumbo</span></div>

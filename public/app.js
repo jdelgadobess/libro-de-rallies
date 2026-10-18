@@ -820,7 +820,7 @@ function renderRecorded() {
       renderRecorded(); renderMap(); if (filt.rec && lmap) lmap.fitBounds(t.segs.flat(), { padding: [30, 30] });
     };
     const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
-    gx.onclick = () => download(slug(t.name) + ".gpx", buildGpx([], t.name, [t], true), "application/gpx+xml");
+    gx.onclick = () => routeGpx(t.name, t.segs, [], stageKey(t), t.rallyId);
     li.append(sw, nm, see, gx);
     if (canEdit()) {
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
@@ -843,8 +843,8 @@ function renderTracks() {
     const nm = document.createElement("span"); nm.className = "em";
     nm.textContent = `${stageLabel(stageKey(t))} · ${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (tw.length ? ` · ${tw.length} WP · ${sumPts(tw)} pts` : "");
     const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
-    gx.title = tw.length ? "GPX limpio: este track y solo los waypoints que une" : "Descargar solo este track";
-    gx.onclick = () => download(slug(t.name) + ".gpx", buildGpx(tw, t.name, [t], true), "application/gpx+xml");
+    gx.title = "Este track con todos los waypoints de su etapa: primero los que une, luego los demás";
+    gx.onclick = () => routeGpx(t.name, t.segs, tw, stageKey(t), t.rallyId);
     li.append(sw, nm, gx);
     if (tw.length) {
       const only = document.createElement("button"); only.type = "button"; only.className = filt.only === t.id ? "hl" : "ghost";
@@ -936,7 +936,7 @@ function renderRecTab() {
           setTimeout(() => { if (lmap) { lmap.fitBounds([...t.segs.flat(), ...mapWps().map((w) => [w.lat, w.lon])], { padding: [30, 30] }); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); } }, 100);
         };
         const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
-        gx.onclick = () => download(slug(t.name) + ".gpx", buildGpx([], t.name, [t], true), "application/gpx+xml");
+        gx.onclick = () => routeGpx(t.name, t.segs, [], stageKey(t), t.rallyId);
         li.append(sw, nm, see, gx);
         if (canEdit()) {
           // move the recording to another stage of the same year
@@ -998,7 +998,7 @@ function renderOwn() {
     d.textContent = `${kmOf(t.segs).toFixed(1)} km · ${tw.length} WP · ${sumPts(tw)} pts` + (tw.length ? " · " + tw.map((w) => w.name).join(" → ") : "");
     const b = document.createElement("div"); b.className = "btns";
     const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
-    gx.onclick = (e) => { e.stopPropagation(); download(slug(t.name + " Etapa " + stageKey(t)) + ".gpx", buildGpx(tw, t.name, [t], true), "application/gpx+xml"); };
+    gx.onclick = (e) => { e.stopPropagation(); routeGpx(t.name + " · Etapa " + stageKey(t), t.segs, tw, stageKey(t), t.rallyId); };
     b.append(gx);
     if (canEdit()) {
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
@@ -1040,7 +1040,7 @@ function renderPlan() {
     const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
     gx.onclick = (e) => {
       e.stopPropagation(); const nm = a.name + " · Etapa " + state.stageFilter;
-      download(slug(nm) + ".gpx", buildGpx(a.wps, nm, [{ name: nm, segs: [a.pts] }], true), "application/gpx+xml");
+      routeGpx(nm, [a.pts], a.wps, state.stageFilter);
     };
     if (canEdit()) b.append(sv); b.append(gx);
     li.append(t, d, d2, b);
@@ -1180,14 +1180,14 @@ $("drawSave").onclick = async () => {
   if (await saveTrack(name.trim() || "Ruta dibujada", [drawing.pts], $("drawMsg"), drawnWps())) { drawing = null; renderDraw(); renderMap(); }
 };
 
-// the drawn line straight to a clean GPX file (only the waypoints it joins), without saving it
+// the drawn line straight to a GPX file, with every waypoint of the stage, without saving it
 $("drawGpx").onclick = () => {
   const st = currentStage();
   const name = prompt("Nombre del track:", state.tab === "plan" ? nextOpt() : "Ruta dibujada" + (st ? " · Etapa " + st : ""));
   if (name === null) return;
   const t = { name: name.trim() || "Ruta dibujada", segs: [drawing.pts] }, wps = drawnWps();
-  download(slug(t.name) + ".gpx", buildGpx(wps, t.name, [t], true), "application/gpx+xml");
-  $("drawMsg").textContent = `Descargado ${slug(t.name)}.gpx: ${kmOf(t.segs).toFixed(1)} km` + (wps.length ? `, ${wps.length} waypoints, ${sumPts(wps)} pts.` : ".");
+  const extra = routeGpx(t.name, t.segs, wps);
+  $("drawMsg").textContent = `Descargado ${slug(t.name)}.gpx: ${kmOf(t.segs).toFixed(1)} km` + (wps.length ? `, ${wps.length} waypoints en la ruta (${sumPts(wps)} pts)` : "") + (extra.length ? ` y los otros ${extra.length} de la etapa (${sumPts(extra)} pts) para cogerlos si da tiempo.` : ".");
 };
 
 /* ---------- manual & GPX ---------- */
@@ -1283,13 +1283,27 @@ wdrop.addEventListener("drop", (e) => { e.preventDefault(); wdrop.classList.remo
 /* ---------- export ---------- */
 const xe = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
 const descOf = (w) => [w.pts ? w.pts + " pts" : "", w.page ? "Pág " + w.page : "", w.desc].filter(Boolean).join(" · ");
-function buildGpx(list, title, trks = [], keepOrder = false) {
+// GPX of a route with every waypoint of its stage: the ones on the route first (in order), then the rest
+function routeGpx(name, segs, onRoute, stage, rallyId = state.rallyId) {
+  const st = stage === undefined || stage === null ? (state.stageFilter !== "all" ? state.stageFilter : currentStage()) : stage;
+  const ids = new Set(onRoute.map((w) => w.id));
+  const all = st === "all" || st === undefined ? mapWps() : state.wps.filter((w) => w.rallyId === rallyId && stageKey(w) === String(st));
+  const extra = all.filter((w) => !ids.has(w.id));
+  download(slug(name) + ".gpx", buildGpx(onRoute, name, [{ name, segs }], true, extra), "application/gpx+xml");
+  return extra;
+}
+function buildGpx(list, title, trks = [], keepOrder = false, extra = []) {
   const pad = $("padNums").checked;
   const nm = (w) => pad ? String(w.name).replace(/\d+/, (d) => d.padStart(3, "0")) : String(w.name);
-  const tot = sumPts(list), info = keepOrder && list.length ? `${list.length} waypoints · ${tot} pts` : "";
+  const tot = sumPts(list);
+  const info = (keepOrder && list.length ? `${list.length} waypoints en la ruta · ${tot} pts` : "") + (extra.length ? `${list.length ? " · " : ""}${extra.length} fuera de la ruta · ${sumPts(extra)} pts` : "");
   let o = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Libro de Rallies" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${xe(title)}</name>${info ? `<desc>${xe(info)}</desc>` : ""}</metadata>\n`;
   (keepOrder ? list : list.slice().sort(wpOrder)).forEach((w) => {
-    o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(descOf(w))}</desc>\n    <sym>Flag</sym>\n  </wpt>\n`;
+    o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(descOf(w))}</desc>\n    <sym>${extra.length ? "Flag, Green" : "Flag"}</sym>\n  </wpt>\n`;
+  });
+  // the stage's other waypoints, for picking up more if there is time
+  extra.slice().sort(wpOrder).forEach((w) => {
+    o += `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">\n    <name>${xe(nm(w))}</name>\n    <cmt>${xe(w.name)}</cmt>\n    <desc>${xe(["Fuera de la ruta", descOf(w)].filter(Boolean).join(" · "))}</desc>\n    <sym>Flag, Red</sym>\n  </wpt>\n`;
   });
   trks.forEach((t) => {
     o += `  <trk>\n    <name>${xe(t.name)}</name>\n` + (info ? `    <desc>${xe(info)}</desc>\n` : "");

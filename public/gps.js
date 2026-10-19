@@ -42,6 +42,10 @@ const say = (t) => { try { if (!("speechSynthesis" in window)) return; speechSyn
 
 export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes, waypoints }) {
   const layer = L.layerGroup().addTo(map), recLayer = L.layerGroup().addTo(map);
+  // on a phone or tablet the map comes in close when the GPS starts following, so tracks and the way ahead read well;
+  // after that the zoom is the driver's (+ and -)
+  const CLOSE = window.matchMedia && matchMedia("(pointer: coarse)").matches ? 17 : 15;
+  let zoomIn = true;
   let watch = null, follow = true, last = null, rec = null, wake = null, dot = null, ring = null, head = null, recLine = null, pendingTry = false;
   let keepUntil = 0; // an important message stays a few seconds before the accuracy readout replaces it
   const msg = (t, sticky) => { if (!sticky && Date.now() < keepUntil) return; $("gpsMsg").textContent = t || ""; if (sticky) keepUntil = Date.now() + 10000; };
@@ -75,7 +79,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
         html: `<svg viewBox="0 0 34 34" style="transform:rotate(${Math.round(hd)}deg)"><path d="M17 2 L23 14 L17 11 L11 14 Z" fill="#1a73e8" stroke="#fff" stroke-width="1.5"/></svg>` });
       if (!head) head = L.marker(ll, { icon, interactive: false, keyboard: false }).addTo(layer); else head.setLatLng(ll).setIcon(icon);
     } else if (head) { layer.removeLayer(head); head = null; }
-    if (follow) map.setView(ll, Math.max(map.getZoom(), 14), { animate: true });
+    if (follow) { map.setView(ll, zoomIn ? Math.max(map.getZoom(), CLOSE) : map.getZoom(), { animate: true }); zoomIn = false; }
   }
 
   function onPos(p) {
@@ -130,7 +134,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     if (!startWatch()) return;
     if (!resumed) rec = { start: Date.now(), segs: [], rally: rallyId(), stage: stage() };
     idb.put("kv", rec, "rec").catch(() => {});
-    follow = true; keepAwake(); drawRec(); ui();
+    follow = true; zoomIn = true; keepAwake(); drawRec(); ui();
     clearInterval(startRec.t); startRec.t = setInterval(ui, 1000);
   }
 
@@ -174,8 +178,8 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   window.addEventListener("online", sendPending);
 
   $("gpsBtn").onclick = () => {
-    if (watch === null) { follow = true; startWatch(); }
-    else if (!follow) { follow = true; if (last) draw(last); ui(); }
+    if (watch === null) { follow = true; zoomIn = true; startWatch(); }
+    else if (!follow) { follow = true; zoomIn = true; if (last) draw(last); ui(); }
     else if (!rec) stopWatch();
     else { follow = false; ui(); }
   };
@@ -262,9 +266,9 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     audioOn();
     fol = { route: { name: r.name, segs: r.segs.filter((s) => s.length) }, thr, off: false, quiet: false, lastWarn: 0, ownRec: false, taken: new Set(), warned: null, prev: null, course: undefined, lastTaken: null };
     say(`Iniciando ruta. Te aviso si te desvías más de ${thr} metros`);
-    follow = true; startWatch();
+    follow = true; zoomIn = true; startWatch();
     if (!rec && canEdit() && stage()) { fol.ownRec = true; startRec(false); }
-    const all = fol.route.segs.flat(); if (all.length > 1) map.fitBounds(all, { padding: [30, 30] });
+    const all = fol.route.segs.flat(); if (!last && all.length > 1) map.fitBounds(all, { padding: [30, 30] });
     followUi(); if (last) checkRoute(last);
   }
   function stopFollow() {

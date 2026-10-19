@@ -74,6 +74,8 @@ const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.rec =
 // waypoints a track joins, in the order they were joined, and the sum of their points
 const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id === id)).filter(Boolean);
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
+// on the map every route is yellow and every waypoint green, so the two never get mixed up
+const TRACK = "#ffd600", WPC = "#1e9e3e";
 const stageColor = (s) => PALETTE[(allStages().indexOf(s) + PALETTE.length) % PALETTE.length];
 // roadbook order: DSS first, then by the number in the name (WP2 before WP10), ASS last; ties by reading order
 // start and finish of the stage, by name ("DSS", "SALIDA") or by description ("ST6 SALIDA", "ST LLEGADA")
@@ -489,21 +491,21 @@ function renderMap() {
   layer.clearLayers(); arrowLines = []; drawArrows();
   const joined = drawing ? new Set(drawing.wpAt.filter(Boolean)) : null;
   const list = mapWps().filter((w) => !joined || !$("drawOnly").checked || joined.has(w.id)), trks = visibleTracks();
-  $("scaleTxt").textContent = list.length || trks.length ? "Colores por etapa · línea continua = track · vista satélite" : "Sin waypoints en esta selección";
+  $("scaleTxt").textContent = list.length || trks.length ? "Rutas en amarillo · waypoints en verde" : "Sin waypoints en esta selección";
   if (!list.length && !trks.length) return;
   const pts = list.map((w) => [w.lat, w.lon]);
   trks.forEach((t) => t.segs.forEach((seg) => {
     L.polyline(seg, { color: "#000", weight: 6, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(seg, { color: stageColor(stageKey(t)), weight: 3.5, opacity: .95 }).bindTooltip(t.name).addTo(layer);
-    arrow(seg, stageColor(stageKey(t)));
+    L.polyline(seg, { color: TRACK, weight: 4, opacity: 1 }).bindTooltip(t.name).addTo(layer);
+    arrow(seg, TRACK);
     seg.forEach((p) => pts.push(p));
   }));
   if (state.tab === "plan") plan.alts.forEach((a, i) => {
     const on = plan.sel === i;
     if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(a.pts, { color: a.color, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
+    L.polyline(a.pts, { color: TRACK, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
       .bindTooltip(a.name).on("click", () => { plan.sel = i; renderPlan(); renderMap(); }).addTo(layer);
-    if (on) arrow(a.pts, a.color);
+    if (on) arrow(a.pts, TRACK);
     // stretches with no way on the map: drawn as a dotted line so they are not taken for a track
     if (on) (a.sat || []).forEach(({ line, note }) => {
       L.polyline(line, { color: "#fff", weight: 2, dashArray: "8 6", opacity: 1 }).bindTooltip("Pista vista en el satélite (no está en el mapa)" + (note ? ": " + note : "")).addTo(layer);
@@ -515,9 +517,9 @@ function renderMap() {
   });
   if (drawing) {
     L.polyline(drawing.pts, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(drawing.pts, { color: "#ff7a00", weight: 4, opacity: 1, interactive: false }).addTo(layer);
-    arrow(drawing.pts, "#ff7a00");
-    drawing.pts.forEach((p) => L.circleMarker(p, { radius: 4, color: "#ff7a00", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
+    L.polyline(drawing.pts, { color: TRACK, weight: 4, opacity: 1, interactive: false }).addTo(layer);
+    arrow(drawing.pts, TRACK);
+    drawing.pts.forEach((p) => L.circleMarker(p, { radius: 4, color: TRACK, weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
   }
   // distance and course between the two points tapped (waypoints or any spot); with one tapped waypoint, to the next one
   const mm = measure.map((m) => m.id ? list.find((w) => w.id === m.id) || null : m).filter(Boolean);
@@ -548,7 +550,7 @@ function renderMap() {
     };
     const hi = state.hi === w.id || measure.some((m) => m.id === w.id) || (joined && joined.has(w.id));
     const out = state.tab === "plan" && plan.sel !== null && plan.alts[plan.sel] && !plan.alts[plan.sel].ids.has(w.id);
-    const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: out ? "#888" : stageColor(stageKey(w)), fillOpacity: out ? .45 : 1, opacity: out ? .5 : 1 })
+    const m = L.circleMarker([w.lat, w.lon], { radius: hi ? 10 : 7, color: hi ? "#000" : "#fff", weight: 2, fillColor: out ? "#888" : WPC, fillOpacity: out ? .45 : 1, opacity: out ? .5 : 1 })
       .bindTooltip(w.pts ? `${w.name} · ${w.pts}` : w.name, { permanent: true, direction: "top", offset: [0, -8], className: "wp-lbl" })
       .on("click", tapWp)
       .addTo(layer);
@@ -885,7 +887,7 @@ function renderRecorded() {
   const ul = $("recList"); ul.textContent = "";
   list.forEach((t) => {
     const li = document.createElement("li");
-    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = stageColor(stageKey(t));
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
     const m = t.meta || {}, secs = m.secs || 0;
     const nm = document.createElement("span"); nm.className = "em";
     nm.textContent = `${t.name}${stageKey(t) ? " · " + stageLabel(stageKey(t)) : ""} · ${kmOf(t.segs).toFixed(1)} km` + (secs ? ` · ${Math.floor(secs / 3600)} h ${String(Math.floor(secs / 60) % 60).padStart(2, "0")} min` : "");
@@ -916,7 +918,7 @@ function renderTracks() {
   const ul = $("trackList"); ul.textContent = "";
   visibleTracks().sort((a, b) => natural(stageKey(a), stageKey(b)) || natural(a.created, b.created)).forEach((t) => {
     const li = document.createElement("li");
-    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = stageColor(stageKey(t));
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
     const tw = trackWps(t);
     const nm = document.createElement("span"); nm.className = "em";
     nm.textContent = `${stageLabel(stageKey(t))} · ${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (tw.length ? ` · ${tw.length} WP · ${sumPts(tw)} pts` : "");
@@ -958,7 +960,6 @@ async function saveTrack(name, segs, msgEl, wps = []) {
 }
 
 /* ---------- route planner (its own tab) ---------- */
-const PLAN_COLORS = ["#ff7a00", "#00a6d6", "#d81b60", "#7cb342", "#8e24aa"];
 const plan = { alts: [], sel: null, graph: null, graphKey: "", busy: false };
 let mec = null, coches = null;
 function setTab(t) {
@@ -1003,7 +1004,7 @@ function renderRecTab() {
       const ul = document.createElement("ul"); ul.className = "tracks";
       mine.filter((t) => stageKey(t) === st).sort((a, b) => String(b.created).localeCompare(String(a.created))).forEach((t) => {
         const li = document.createElement("li");
-        const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = "#e91e63";
+        const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
         const nm = document.createElement("span"); nm.className = "em";
         nm.textContent = `${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (fmtDur((t.meta || {}).secs) ? " · " + fmtDur(t.meta.secs) : "");
         const see = document.createElement("button"); see.type = "button"; see.className = "hl"; see.textContent = st !== "" ? "Ver con la etapa" : "Ver en el mapa";
@@ -1070,7 +1071,7 @@ function renderOwn() {
   list.forEach((t) => {
     const tw = trackWps(t), li = document.createElement("li"); li.className = filt.trk === t.id ? "on" : "";
     const h = document.createElement("div"); h.className = "t";
-    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = stageColor(stageKey(t));
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
     h.append(sw, t.name);
     const d = document.createElement("div"); d.className = "d";
     d.textContent = `${kmOf(t.segs).toFixed(1)} km · ${tw.length} WP · ${sumPts(tw)} pts` + (tw.length ? " · " + tw.map((w) => w.name).join(" → ") : "");
@@ -1105,7 +1106,7 @@ function renderPlan() {
   plan.alts.forEach((a, i) => {
     const li = document.createElement("li"); li.className = plan.sel === i ? "on" : "";
     const t = document.createElement("div"); t.className = "t";
-    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = a.color;
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
     t.append(sw, a.name);
     const d = document.createElement("div"); d.className = "d";
     d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.extra > 0 ? ` (${a.extra} más porque la ruta pasa al lado)` : "") + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista` +
@@ -1169,7 +1170,7 @@ $("pRun").onclick = async () => {
         if (n && same / n < 0.85) alts.push(mk(p, v, p.name + " · por otras pistas"));
       }
     });
-    plan.alts = alts.map((a, i) => ({ ...a, color: PLAN_COLORS[i % PLAN_COLORS.length] })); plan.sel = 0;
+    plan.alts = alts.map((a) => ({ ...a, color: TRACK })); plan.sel = 0;
     const far = sn.filter((s) => s.d > 1000).length;
     msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints, de ${st ? st.name + (st.desc ? " (" + st.desc + ")" : "") : wps[0].name + " (no encuentro la SALIDA)"} a ${fin ? fin.name + (fin.desc ? " (" + fin.desc + ")" : "") : wps[wps.length - 1].name + " (no encuentro la LLEGADA)"}.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
     renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
@@ -1461,9 +1462,9 @@ function buildKml(list, trks = []) {
   let styles = "", folders = "";
   Object.keys(groups).sort((a, b) => ((a === "") - (b === "")) || natural(a, b)).forEach((s) => {
     const sid = "e" + (s || "x");
-    styles += `  <Style id="${sid}"><IconStyle><color>${abgr(stageColor(s))}</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-blank.png</href></Icon></IconStyle></Style>\n`;
+    styles += `  <Style id="${sid}"><IconStyle><color>${abgr(WPC)}</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-blank.png</href></Icon></IconStyle></Style>\n`;
     folders += `  <Folder><name>${xe(stageLabel(s))}</name>\n`;
-    styles += `  <Style id="${sid}t"><LineStyle><color>${abgr(stageColor(s))}</color><width>4</width></LineStyle></Style>\n`;
+    styles += `  <Style id="${sid}t"><LineStyle><color>${abgr(TRACK)}</color><width>4</width></LineStyle></Style>\n`;
     groups[s].filter((x) => x.segs).forEach((t) => {
       folders += `    <Placemark><name>${xe(t.name)}</name><styleUrl>#${sid}t</styleUrl><MultiGeometry>` +
         t.segs.map((seg) => `<LineString><tessellate>1</tessellate><coordinates>${seg.map(([la, lo]) => lo.toFixed(6) + "," + la.toFixed(6)).join(" ")}</coordinates></LineString>`).join("") + `</MultiGeometry></Placemark>\n`;

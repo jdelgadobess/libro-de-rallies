@@ -119,7 +119,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   function drawRec() {
     recLayer.clearLayers();
     if (!rec) return;
-    rec.segs.forEach((s) => { if (s.length > 1) { L.polyline(s, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(recLayer); L.polyline(s, { color: "#e91e63", weight: 4, interactive: false }).addTo(recLayer); } });
+    rec.segs.forEach((s) => { if (s.length > 1) { L.polyline(s, { color: "#000", weight: 7, opacity: .35, interactive: false }).addTo(recLayer); L.polyline(s, { color: "#ffd600", weight: 4, interactive: false }).addTo(recLayer); } });
   }
 
   // keeps the screen on while recording: with the screen off the phone stops giving the browser positions

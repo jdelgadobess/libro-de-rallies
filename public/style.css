@@ -376,3 +376,6 @@ body:not(.tab-rec) #recTab { display: none }
 .compass-ctl svg { width: 26px; height: 26px; display: block; transition: transform .3s }
 .compass-ctl.on { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8 }
 .followbar input[type=checkbox] { width: auto }
+.layersbar #lyDl { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.layersbar button.dl { padding: 5px 10px; font-size: .82rem }
+.offbadge { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 800; background: #222; color: #fff; padding: 4px 10px; border-radius: 12px; font: 600 .8rem var(--sans, system-ui); pointer-events: none; opacity: .85 }

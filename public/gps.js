@@ -348,11 +348,14 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
 
   /* ---------- working without a connection: only the maps kept on this device, no data spent ---------- */
   const offOn = () => $("offMode").checked;
+  const offBadge = document.createElement("div"); offBadge.className = "offbadge"; offBadge.hidden = true;
+  offBadge.textContent = "📴 Sin conexión: solo los mapas guardados en este aparato"; map.getContainer().append(offBadge);
   let offLooked = false; // the map of the zone is looked for again with the first position
   async function applyOff(tell) {
     const on = offOn(); offLooked = !!last;
     try { localStorage.setItem("rally.off", on ? "1" : "0"); } catch (e) {}
     if (layers) layers.setOffline(on);
+    offBadge.hidden = !on;
     if (!on) { if (tell) msg("Con conexión: el mapa vuelve a cargar de internet y las rutas guardadas en el móvil se suben.", true); sendPending(); return; }
     const at = last ? [last.coords.latitude, last.coords.longitude] : [map.getCenter().lat, map.getCenter().lng];
     const t = layers ? await layers.coverHere(at) : "";

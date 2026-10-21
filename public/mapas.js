@@ -6,6 +6,8 @@ const PROTOMAPS_JS = "https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/
 export const OFFROAD_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles";
 export const OFFROAD_ES_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-espana/espana.pmtiles";
 const $ = (id) => document.getElementById(id);
+// the maps in 45 MB pieces on the «mapas» branch: GitHub's release files can't be read by a web page, these can
+const PIECES = "https://raw.githubusercontent.com/jdelgadobess/libro-de-rallies/mapas/";
 
 /* ---------- IndexedDB: offline maps and the last copy of the data ---------- */
 let dbp = null;
@@ -29,6 +31,19 @@ export const idb = {
   async put(store, val, key) { const d = await idbOpen(); return req(d.transaction(store, "readwrite").objectStore(store).put(val, key)); },
   async del(store, key) { const d = await idbOpen(); return req(d.transaction(store, "readwrite").objectStore(store).delete(key)); },
 };
+
+// a map downloaded from the program is kept in pieces; put together they read as one file
+const partKey = (m, i) => `mp|${m.id}|${i}`;
+async function blobOf(m) {
+  if (m.blob) return m.blob;
+  const parts = [];
+  for (let i = 0; i < m.parts; i++) { const b = await idb.get("kv", partKey(m, i)); if (!b) throw new Error("el mapa está a medio descargar"); parts.push(b); }
+  return new Blob(parts);
+}
+async function dropMap(m) {
+  for (let i = 0; i < (m.parts || 0); i++) await idb.del("kv", partKey(m, i)).catch(() => {});
+  await idb.del("maps", m.id);
+}
 
 /* ---------- reading MBTiles / OsmAnd .sqlitedb ---------- */
 let sqlP = null;
@@ -165,9 +180,9 @@ export function openTiles(SQL, bytes) {
 // the off-road map kept on this device that covers a point (Morocco, Spain…), for the route planner; null if none
 const orCache = new Map();
 export async function offroadMap(at) {
-  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m));
+  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m) && (m.blob || m.done));
   if (!maps.length) return null;
-  const open = async (m) => { if (!orCache.has(m.id)) orCache.set(m.id, { id: m.id, name: m.name, ...(await openPmtiles(m.blob, m.id)) }); return orCache.get(m.id); };
+  const open = async (m) => { if (!orCache.has(m.id)) orCache.set(m.id, { id: m.id, name: m.name, ...(await openPmtiles(await blobOf(m), m.id)) }); return orCache.get(m.id); };
   let found = null;
   for (const m of maps) {
     const o = await open(m), [[s, w], [n, e]] = o.bounds;
@@ -233,7 +248,7 @@ export function setupLayers(lmap) {
     msg(`Abriendo ${m.name}…`);
     let src, layer;
     if (/\.pmtiles$/i.test(m.file || "")) {
-      src = await openPmtiles(m.blob, m.id); await script(PROTOMAPS_JS);
+      src = await openPmtiles(await blobOf(m), m.id); await script(PROTOMAPS_JS);
       layer = isContours(m)
         ? window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "contours", bounds: src.bounds, attribution: "Curvas © Copernicus DEM", ...contourStyle() })
         : window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", bounds: src.bounds, attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
@@ -252,12 +267,13 @@ export function setupLayers(lmap) {
   async function list() {
     const box = $("lyFiles"); box.textContent = "";
     let maps = [];
-    try { maps = await idb.all("maps"); } catch (e) { msg("Este navegador no deja guardar mapas sin conexión."); return; }
+    try { maps = (await idb.all("maps")).filter((m) => m.blob || m.done); } catch (e) { msg("Este navegador no deja guardar mapas sin conexión."); return; }
     if (!maps.some((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m))) {
       const p = document.createElement("span"); p.className = "msg";
-      p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd). Descárgalo e impórtalo en el paso 3, en «Importar mapa off-road».";
+      p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd): descárgalo aquí abajo y funcionará sin internet.";
       box.append(p);
     }
+    offerDownloads(maps);
     maps.sort((a, b) => a.name.localeCompare(b.name)).forEach((m) => {
       const l = document.createElement("label"); l.className = "chk";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = pref.on.includes(m.id);
@@ -270,11 +286,63 @@ export function setupLayers(lmap) {
       rm.onclick = async (e) => {
         e.preventDefault();
         if (!confirm(`¿Quitar «${m.name}» de este dispositivo?`)) return;
-        turnOff(m.id); pref.on = pref.on.filter((x) => x !== m.id); save(); await idb.del("maps", m.id); list(); msg("");
+        turnOff(m.id); pref.on = pref.on.filter((x) => x !== m.id); save(); await dropMap(m); list(); msg("");
       };
       l.append(cb, ` ${m.name} (${(m.size / 1048576).toFixed(0)} MB)`, rm); box.append(l);
     });
     for (const m of maps) if (pref.on.includes(m.id)) { try { await turnOn(m, false); } catch (e) { msg(`${m.name}: ${e.message}`); } }
+  }
+  /* ---------- downloading the maps straight into this device ---------- */
+  let catalog = null, downloading = null;
+  async function offerDownloads(maps) {
+    const box = $("lyDl"); if (!box) return;
+    if (!catalog) { try { catalog = await (await fetch(PIECES + "mapas.json", { cache: "no-cache" })).json(); } catch (e) { box.textContent = ""; return; } }
+    box.textContent = "";
+    const missing = catalog.filter((c) => !maps.some((m) => m.file === c.file && (m.blob || m.done)));
+    if (!missing.length) return;
+    const t = document.createElement("span"); t.textContent = "Descargar en este dispositivo:"; box.append(t);
+    missing.forEach((c) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "ghost dl";
+      const mb = c.size / 1048576;
+      b.textContent = `⬇ ${c.name} (${mb >= 1000 ? (mb / 1024).toLocaleString("es", { maximumFractionDigits: 1 }) + " GB" : Math.round(mb) + " MB"})`;
+      b.disabled = !!downloading;
+      b.onclick = () => download(c);
+      box.append(b);
+    });
+  }
+  async function download(c) {
+    if (downloading) return;
+    if (!navigator.onLine) { msg("Para descargar el mapa hace falta internet (mejor con wifi)."); return; }
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const e = await navigator.storage.estimate();
+        if (e.quota && e.quota - e.usage < c.size * 1.1) { msg(`No hay sitio: «${c.name}» ocupa ${Math.round(c.size / 1048576)} MB y quedan ${Math.round((e.quota - e.usage) / 1048576)} MB libres para el navegador.`); return; }
+      }
+      if (navigator.storage && navigator.storage.persist) await navigator.storage.persist();
+    } catch (e) {}
+    const m = { id: "dl|" + c.id, name: c.name, file: c.file, size: c.size, parts: c.parts, added: Date.now(), done: false };
+    downloading = m; list(); msg(`Descargando ${c.name}…`);
+    try {
+      await idb.put("maps", m);
+      for (let i = 0; i < c.parts; i++) {
+        // pieces already here (a download cut halfway) are not downloaded again
+        if (!(await idb.get("kv", partKey(m, i)))) {
+          const res = await fetch(PIECES + c.file + "." + String(i).padStart(3, "0"), { cache: "no-store" });
+          if (!res.ok) throw new Error(`error ${res.status} al descargar`);
+          await idb.put("kv", await res.blob(), partKey(m, i));
+        }
+        msg(`Descargando ${c.name}: ${Math.round((i + 1) / c.parts * 100)} % · no cierres la página`);
+      }
+      await openPmtiles(await blobOf(m), "check");
+      m.done = true; await idb.put("maps", m);
+      if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
+      downloading = null; await list();
+      if (!isContours(m)) satOff();
+      msg(`«${c.name}» ya está en este dispositivo: funciona sin internet. Lo enciendes y apagas con su casilla.`);
+    } catch (e) {
+      downloading = null; list();
+      msg(`No se pudo terminar «${c.name}»: ${e.message}. Vuelve a tocar el botón y seguirá donde se quedó.`);
+    }
   }
   const say = (t) => { msg(t); const m = $("mapImpMsg"); if (m) m.textContent = t; };
   async function importMaps(files) {

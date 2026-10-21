@@ -137,7 +137,7 @@ $("claim").onclick = async () => {
 function gate(title, text, { login = false, claim = false } = {}) {
   $("gate").hidden = false; $("app").hidden = true;
   $("gateTitle").textContent = title; $("gateText").textContent = text;
-  $("login").hidden = !login; $("claim").hidden = !claim; $("features").hidden = !login; document.querySelector(".hero .stats").hidden = login;
+  $("login").hidden = !login; $("claim").hidden = !claim; $("features").hidden = !login;
 }
 
 async function roleFor() {
@@ -156,7 +156,7 @@ async function offlineBoot() {
   if (!snap) { gate("Sin conexión", "No hay internet y este dispositivo aún no tiene copia. Abre la web una vez con conexión y quedará guardada."); return; }
   Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks });
   $("userbar").hidden = false; $("uName").textContent = snap.email; $("uPhoto").hidden = true;
-  $("gate").hidden = true; $("features").hidden = true; document.querySelector(".hero .stats").hidden = false; $("app").hidden = false;
+  $("gate").hidden = true; $("features").hidden = true; $("app").hidden = false;
   document.body.classList.add("viewer-only-hide"); $("adminPanel").hidden = true;
   render(); loadMaps();
   showNotice(`Sin conexión: ves la copia guardada el ${new Date(snap.at).toLocaleString("es")}. Los mapas sin conexión funcionan; para guardar cambios hace falta internet.`);
@@ -207,7 +207,7 @@ async function boot(user) {
   if (role === "unclaimed") { gate("Web nueva", "Nadie administra todavía esta web. Si es tuya, pulsa el botón y serás el administrador.", { claim: true }); return; }
   if (!role) { gate("Sin acceso", `Tu cuenta (${user.email}) no tiene acceso. Pide al administrador que te dé permiso.`); return; }
   state.role = role;
-  $("gate").hidden = true; $("features").hidden = true; document.querySelector(".hero .stats").hidden = false; $("app").hidden = false;
+  $("gate").hidden = true; $("features").hidden = true; $("app").hidden = false;
   document.body.classList.toggle("viewer-only-hide", !canEdit());
   $("adminPanel").hidden = role !== "admin";
   // changes made by anyone show up for everyone with the page open
@@ -509,7 +509,8 @@ function renderMap() {
     arrow(seg, TRACK);
     seg.forEach((p) => pts.push(p));
   }));
-  if (state.tab === "plan") plan.alts.forEach((a, i) => {
+  // the stage's proposals show on every tab and every device: they are kept in the database
+  if (plan.stage === state.stageFilter) plan.alts.forEach((a, i) => {
     const on = plan.sel === i;
     if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(a.pts, { color: TRACK, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
@@ -1072,7 +1073,8 @@ async function loadPlan() {
   plan.alts = row.alts.map((a) => { const wps = a.wpIds.map((id) => byId.get(id)).filter(Boolean); return { ...a, wps, ids: new Set(wps.map((w) => w.id)) }; });
   plan.sel = 0;
   $("pMsg").textContent = `Propuestas calculadas el ${new Date(row.created_at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}. Pulsa «Calcular» para rehacerlas.` + (row.note ? " " + row.note.replace(/^\d+ propuestas[^.]*\.\s*/, "") : "");
-  renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
+  renderPlan(); renderMap(); renderFollow();
+  if (lmap && state.tab === "plan") lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
 }
 function renderOwn() {
   const list = state.stageFilter === "all" ? [] : optTracks(), ul = $("pOwn"); ul.textContent = "";
@@ -1103,9 +1105,9 @@ function renderOwn() {
   });
 }
 function renderPlan() {
+  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; loadPlan(); }
   if (state.tab !== "plan") return;
   renderOwn();
-  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; loadPlan(); }
   const wps = mapWps();
   $("pScope").textContent = state.stageFilter === "all"
     ? "Elige una etapa en el paso 2."

@@ -98,6 +98,10 @@
           <span data-edit><button type="button" class="ghost" id="stageDel" hidden>Eliminar etapa</button></span>
           <button type="button" class="chip" id="allStages" aria-pressed="false" hidden>Todas</button>
         </div>
+        <div class="stagetrk" id="trkBox" hidden>
+          <h3 id="trkHead">Rutas de la etapa</h3>
+          <ul class="tracks" id="trackList"></ul>
+        </div>
         <div class="chips" id="stageChips" hidden></div>
         <p class="hint" id="stageHint" hidden></p>
         <div class="trkpick" hidden>
@@ -152,7 +156,6 @@
           <input type="file" id="trackFile" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml" multiple class="vh">
           <span>El recorrido de la etapa. Sale en el mapa, en Google Earth y en el GPX.</span>
         </div>
-        <ul class="tracks" id="trackList"></ul>
         <p class="msg" id="trkMsg" data-edit></p>
 
         <div class="drop" id="orDrop" style="margin-top:12px">
@@ -284,7 +287,7 @@
           <span id="lyFiles"></span>
           <span id="lyDl"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 58</span>
+          <span class="msg ver">Versión 59</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>

@@ -925,23 +925,31 @@ function renderRecorded() {
 }
 function renderTracks() {
   renderTrkPick(); renderRecorded();
+  // the routes of the stage chosen in step 2, each ready to download
   const ul = $("trackList"); ul.textContent = "";
-  visibleTracks().sort((a, b) => natural(stageKey(a), stageKey(b)) || natural(a.created, b.created)).forEach((t) => {
+  const st = state.stageFilter, list = st === "all" ? [] : rallyTracks().filter((t) => stageKey(t) === st)
+    .sort((a, b) => (a.kind === "grabada") - (b.kind === "grabada") || natural(a.created, b.created));
+  $("trkBox").hidden = !list.length;
+  $("trkHead").textContent = `Rutas de la ${stageLabel(st).toLowerCase()} (${list.length})`;
+  list.forEach((t) => {
     const li = document.createElement("li");
     const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
     const tw = trackWps(t);
     const nm = document.createElement("span"); nm.className = "em";
-    nm.textContent = `${stageLabel(stageKey(t))} · ${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (tw.length ? ` · ${tw.length} WP · ${sumPts(tw)} pts` : "");
-    const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "GPX";
-    gx.title = "Este track con todos los waypoints de su etapa: primero los que une, luego los demás";
+    const b = document.createElement("b"); b.textContent = (t.kind === "grabada" ? "⏺ " : "") + t.name.replace(/\s*·\s*Etapa\s+\S+$/i, "");
+    const sm = document.createElement("small"); sm.textContent = `${kmOf(t.segs).toFixed(1)} km` + (tw.length ? ` · ${tw.length} WP · ${sumPts(tw)} pts` : "");
+    nm.append(b, sm);
+    const acts = document.createElement("span"); acts.className = "acts";
+    const gx = document.createElement("button"); gx.type = "button"; gx.className = "ghost"; gx.textContent = "⬇ Descargar";
+    gx.title = "GPX de esta ruta con los waypoints de su etapa: primero los que une, luego los demás";
     gx.onclick = () => routeGpx(t.name, t.segs, tw, stageKey(t), t.rallyId);
-    li.append(sw, nm, gx);
+    acts.append(gx);
     if (tw.length) {
       const only = document.createElement("button"); only.type = "button"; only.className = filt.only === t.id ? "hl" : "ghost";
       only.textContent = filt.only === t.id ? "Ver todos" : "Solo sus WP";
-      only.title = "Apaga en el mapa y en la tabla los waypoints que no une este track";
+      only.title = "Apaga en el mapa y en la tabla los waypoints que no une esta ruta";
       only.onclick = () => { filt.only = filt.only === t.id ? null : t.id; refilter(); renderTracks(); };
-      li.append(only);
+      acts.append(only);
     }
     if (canEdit()) {
       const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
@@ -949,8 +957,9 @@ function renderTracks() {
         if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
         try { must(await sb.from("tracks").delete().eq("id", t.id)); if (filt.only === t.id) filt.only = null; await loadAll(); } catch (e) { $("trkMsg").textContent = writeErr(e); }
       };
-      li.append(del);
+      acts.append(del);
     }
+    li.append(sw, nm, acts);
     ul.append(li);
   });
 }

@@ -465,3 +465,12 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
   section.panel { padding: 14px }
 }
 .stagebar { align-items: center; justify-content: space-between }
+
+/* step 2: the stage's routes, each with its download */
+.stagetrk h3 { margin: 4px 0 0; font: 600 .74rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted) }
+.stagetrk .tracks li { flex-wrap: wrap; padding: 8px 0; gap: 6px 10px }
+.stagetrk .tracks .em { display: grid; flex: 1 1 140px; min-width: 0; overflow-wrap: normal; line-height: 1.3 }
+.stagetrk .tracks .em b { font-weight: 600 }
+.stagetrk .tracks .em small { color: var(--muted); font-family: var(--mono); font-size: .75rem }
+.stagetrk .tracks .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto }
+.stagetrk .tracks .acts button { padding: 5px 10px; font-size: .8rem }

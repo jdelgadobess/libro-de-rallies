@@ -1506,6 +1506,7 @@ function download(name, text, type) {
 }
 function renderDownloads() {
   const box = $("dlStages"); box.textContent = "";
+  const dl = $("fDl"); dl.textContent = "";
   const all = rallyWps();
   allStages().forEach((s) => {
     const b = document.createElement("button"); b.type = "button";
@@ -1524,7 +1525,17 @@ function renderDownloads() {
       $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length === total ? list.length : list.length + " de " + total} waypoints en orden` + (sumPts(list) ? ` (${sumPts(list)} pts)` : "") + (trks.length ? ` y ${trks.length === 1 ? "el track «" + trks[0].name + "»" : trks.length + " tracks"}.` : ".");
     };
     box.append(b);
+    // the stage on screen: its GPX also right above the table, next to its recorded traces
+    if (s === state.stageFilter) { const top = b.cloneNode(true); top.className = "hl"; top.textContent = "⬇ " + b.textContent; top.onclick = b.onclick; dl.append(top); }
   });
+  rallyTracks().filter((t) => t.kind === "grabada" && stageKey(t) === state.stageFilter).forEach((t) => {
+    const g = document.createElement("button"); g.type = "button"; g.className = "ghost";
+    g.textContent = "⬇ Traza " + t.name.replace(/^Grabada/, "grabada");
+    g.title = "GPX de la ruta grabada, con los waypoints de la etapa";
+    g.onclick = () => routeGpx(t.name, t.segs, trackWps(t), stageKey(t), t.rallyId);
+    dl.append(g);
+  });
+  dl.hidden = !dl.children.length;
   const nw = mapWps().length, nt = visibleTracks().length;
   $("openEarth").disabled = !nw && !nt;
   $("earthScope").textContent = rally() ? `${nw} waypoint${nw === 1 ? "" : "s"}` + (nt ? ` y ${nt} track${nt === 1 ? "" : "s"}` : "") + " · " + scopeLabel() : "";

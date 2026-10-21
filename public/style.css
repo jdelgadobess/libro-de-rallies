@@ -474,3 +474,4 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 .stagetrk .tracks .em small { color: var(--muted); font-family: var(--mono); font-size: .75rem }
 .stagetrk .tracks .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto }
 .stagetrk .tracks .acts button { padding: 5px 10px; font-size: .8rem }
+.tabdl { flex-basis: 100%; border-top: 1px dashed var(--line); padding-top: 10px }

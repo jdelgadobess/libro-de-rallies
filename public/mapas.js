@@ -302,6 +302,12 @@ export function setupLayers(lmap) {
     const missing = catalog.filter((c) => !maps.some((m) => m.file === c.file && (m.blob || m.done)));
     if (!missing.length) return;
     const t = document.createElement("span"); t.textContent = "Descargar en este dispositivo:"; box.append(t);
+    if (missing.length > 1) {
+      const all = document.createElement("button"); all.type = "button"; all.className = "hl dl"; all.disabled = !!downloading;
+      all.textContent = `⬇ Todo (${(missing.reduce((t, c) => t + c.size, 0) / 1073741824).toLocaleString("es", { maximumFractionDigits: 1 })} GB)`;
+      all.onclick = async () => { for (const c of missing) { if (!(await download(c))) return; } msg("Todos los mapas y curvas están en este dispositivo: funcionan sin internet."); };
+      box.append(all);
+    }
     missing.forEach((c) => {
       const b = document.createElement("button"); b.type = "button"; b.className = "ghost dl";
       const mb = c.size / 1048576;
@@ -340,6 +346,7 @@ export function setupLayers(lmap) {
       downloading = null; await list();
       if (!isContours(m)) satOff();
       msg(`«${c.name}» ya está en este dispositivo: funciona sin internet. Lo enciendes y apagas con su casilla.`);
+      return true;
     } catch (e) {
       downloading = null; list();
       msg(`No se pudo terminar «${c.name}»: ${e.message}. Vuelve a tocar el botón y seguirá donde se quedó.`);

@@ -274,6 +274,7 @@ export function setupLayers(lmap) {
       box.append(p);
     }
     offerDownloads(maps);
+    if (maps.length) { const t = document.createElement("span"); t.textContent = "Mapas guardados en este dispositivo:"; box.append(t); }
     maps.sort((a, b) => a.name.localeCompare(b.name)).forEach((m) => {
       const l = document.createElement("label"); l.className = "chk";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = pref.on.includes(m.id);

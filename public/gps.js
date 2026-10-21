@@ -364,6 +364,11 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   // a recording interrupted by a reload carries on
   idb.get("kv", "rec").then((r) => { if (r && r.segs && !rec) { rec = r; startRec(true); msg("He recuperado la grabación que estaba en marcha. Sigue grabando.", true); } }).catch(() => {});
   applyOff(false);
+  // on a phone or tablet my position shows as soon as the map opens
+  if (CLOSE === 17) {
+    const go = () => { if (watch === null) { follow = true; zoomIn = true; startWatch(); } };
+    try { navigator.permissions.query({ name: "geolocation" }).then((p) => { if (p.state !== "denied") go(); }, go); } catch (e) { go(); }
+  }
   sendPending();
   ui();
 }

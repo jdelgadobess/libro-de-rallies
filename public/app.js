@@ -162,7 +162,12 @@ async function offlineBoot() {
   showNotice(`Sin conexión: ves la copia guardada el ${new Date(snap.at).toLocaleString("es")}. Los mapas sin conexión funcionan; para guardar cambios hace falta internet.`);
 }
 window.addEventListener("online", () => { if (offline) location.reload(); });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  // a new version takes over by itself: the page reloads once so the phone or tablet doesn't keep the old program
+  const had = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
+}
 if (!navigator.onLine) offlineBoot();
 
 // boot once per signed-in person (token refreshes fire this too)
@@ -437,6 +442,9 @@ function loadMaps() {
       if (Date.now() - (g.drawn || 0) > 3000) { g.drawn = Date.now(); renderMap(); }
     } });
   layer = L.layerGroup().addTo(lmap);
+  // seen from far the waypoint numbers pile up: they show from zoom 11
+  const far = () => $("gmap").classList.toggle("far", lmap.getZoom() < 11);
+  lmap.on("zoomend", far); far();
   lmap.createPane("arrows", lmap._norotatePane).style.zIndex = 450;
   arrowLayer = L.layerGroup().addTo(lmap);
   lmap.on("zoomend moveend", drawArrows);

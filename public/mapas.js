@@ -6,6 +6,16 @@ const PROTOMAPS_JS = "https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/
 export const OFFROAD_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles";
 export const OFFROAD_ES_URL = "https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-espana/espana.pmtiles";
 const $ = (id) => document.getElementById(id);
+const S2_URL = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg";
+const S2_ATTR = 'Satélite <a href="https://cloudless.eox.at">EOxCloudless</a> by EOX IT Services GmbH (contiene datos Copernicus Sentinel 2025 modificados)';
+const ZONES = "libro-zonas"; // the service worker keeps this cache and never trims it
+// the tiles (zoom 8 to 14) that cover a rectangle
+function tilesOf([[s, w], [n, e]], z0 = 8, z1 = 14) {
+  const out = [], lx = (lon, z) => Math.floor((lon + 180) / 360 * 2 ** z);
+  const ly = (lat, z) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z); };
+  for (let z = z0; z <= z1; z++) for (let x = lx(w, z); x <= lx(e, z); x++) for (let y = ly(n, z); y <= ly(s, z); y++) out.push(S2_URL.replace("{z}", z).replace("{x}", x).replace("{y}", y));
+  return out;
+}
 // the maps in 45 MB pieces on the «mapas» branch: GitHub's release files can't be read by a web page, these can
 const PIECES = "https://raw.githubusercontent.com/jdelgadobess/libro-de-rallies/mapas/";
 
@@ -201,6 +211,8 @@ export function setupLayers(lmap) {
   const bases = {
     osm: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { ...co, maxZoom: 19, attribution: "© colaboradores de OpenStreetMap" }),
     topo: L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { ...co, maxZoom: 17, attribution: "© OpenStreetMap · estilo © OpenTopoMap (CC-BY-SA)" }),
+    // Sentinel-2 cloudless: 10 m satellite that may be kept offline for non-commercial use (Esri's may not)
+    s2: L.tileLayer(S2_URL, { ...co, maxNativeZoom: 14, maxZoom: 19, attribution: S2_ATTR }),
   };
   const sat = L.layerGroup([
     L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }),
@@ -212,6 +224,8 @@ export function setupLayers(lmap) {
   lmap.createPane("contours", lmap._rotatePane).style.zIndex = 320; // over the satellite too
   lmap.getPane("contours").style.pointerEvents = "none";
   Object.values(bases).forEach((l) => { l.options.pane = "base"; });
+  lmap.createPane("s2", lmap._rotatePane).style.zIndex = 270; // the downloaded satellite goes over the off-road map, like Esri's
+  bases.s2.options.pane = "s2";
   sat.eachLayer((l) => { l.options.pane = "sat"; });
 
   const pref = (() => { try { return JSON.parse(localStorage.getItem("rally.layers")) || {}; } catch (e) { return {}; } })();
@@ -393,6 +407,69 @@ export function setupLayers(lmap) {
     if (!pref.on.includes(o.id)) { pref.on.push(o.id); save(); await list(); }
     return `Sin conexión: uso el mapa «${o.name}» guardado en el dispositivo y el satélite que ya hayas visto antes.`;
   }
-  apply(); list();
+  /* ---------- satellite of a chosen zone, kept on this device ---------- */
+  let zoning = false;
+  const zones = async () => { try { return (await idb.get("kv", "zones")) || []; } catch (e) { return []; } };
+  async function renderZones() {
+    const box = $("lyZones"); if (!box) return;
+    box.textContent = "";
+    const t = document.createElement("span"); t.className = "lysub"; t.textContent = "Satélite sin conexión (Sentinel-2, 10 m por píxel)"; box.append(t);
+    for (const z of await zones()) {
+      const c = document.createElement("div"); c.className = "mapcard zone";
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = z.name;
+      const sm = document.createElement("small"); sm.textContent = `${Math.round(z.km2).toLocaleString("es")} km² · ${mbTxt(z.bytes)}`; nm.append(sm);
+      nm.onclick = () => { lmap.fitBounds(z.b); pref.base = "s2"; save(); apply(); };
+      const rm = document.createElement("button"); rm.type = "button"; rm.className = "ghost x"; rm.textContent = "✕"; rm.title = "Quitar esta zona del dispositivo";
+      rm.onclick = async () => { if (!confirm(`¿Quitar «${z.name}» de este dispositivo?`)) return; await dropZone(z); };
+      c.append(nm, rm); box.append(c);
+    }
+    const b = document.createElement("button"); b.type = "button"; b.className = "ghost dl"; b.disabled = zoning;
+    b.innerHTML = '<b>🛰️</b><span class="nm">Descargar el satélite de lo que ves<small>con wifi · acerca el mapa a la zona</small></span>';
+    b.onclick = downloadZone; box.append(b);
+  }
+  async function downloadZone() {
+    if (zoning) return;
+    if (!("caches" in window)) { msg("Este navegador no deja guardar el satélite."); return; }
+    if (!navigator.onLine) { msg("Para descargar el satélite hace falta internet (mejor con wifi)."); return; }
+    const bb = lmap.getBounds(), b = [[bb.getSouth(), bb.getWest()], [bb.getNorth(), bb.getEast()]];
+    const urls = tilesOf(b);
+    const km2 = (b[1][0] - b[0][0]) * 111.32 * (b[1][1] - b[0][1]) * 111.32 * Math.cos((b[0][0] + b[1][0]) / 2 * Math.PI / 180);
+    if (urls.length > 6000) { msg(`La zona es muy grande (${Math.round(km2).toLocaleString("es")} km²). Acerca el mapa a la zona que quieras, como mucho unos 80 × 80 km, y vuelve a tocar el botón.`); return; }
+    if (!confirm(`Descargar el satélite de ${Math.round(km2).toLocaleString("es")} km² (${urls.length} imágenes, unos ${Math.max(1, Math.round(urls.length * 0.03))} MB)?`)) return;
+    try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+    zoning = true; renderZones();
+    const cache = await caches.open(ZONES);
+    let done = 0, bytes = 0, fails = 0, i = 0;
+    const one = async (url) => {
+      if (await cache.match(url)) return;
+      for (let t = 0; t < 4; t++) {
+        try {
+          const res = await fetch(url, { mode: "cors" });
+          if (res.status === 429 || res.status >= 500) { await new Promise((r) => setTimeout(r, 1500 * (t + 1))); continue; }
+          if (!res.ok) { fails++; return; } // no image there (sea, outside the layer)
+          const blob = await res.blob(); bytes += blob.size;
+          await cache.put(url, new Response(blob, { headers: { "content-type": "image/jpeg" } }));
+          return;
+        } catch (e) { await new Promise((r) => setTimeout(r, 1000)); }
+      }
+      fails++;
+    };
+    const worker = async () => { while (i < urls.length) { await one(urls[i++]); done++; if (done % 25 === 0 || done === urls.length) msg(`Descargando el satélite: ${Math.round(done / urls.length * 100)} % · no cierres la página`); } };
+    await Promise.all([worker(), worker(), worker()]);
+    zoning = false;
+    if (fails > urls.length * 0.5) { msg("No se pudo descargar el satélite de esta zona. Inténtalo más tarde con wifi."); renderZones(); return; }
+    const d = new Date(), list = await zones();
+    list.push({ id: d.getTime(), name: `Zona ${list.length + 1} · ${d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" })}`, b, km2, n: urls.length, bytes });
+    await idb.put("kv", list, "zones");
+    pref.base = "s2"; if (pref.sat) pref.sat = false; save(); apply(); renderZones();
+    msg(`Satélite guardado en este dispositivo (${mbTxt(bytes)}): se ve sin internet hasta el zoom 14. En «Caminos» he puesto «Satélite Sentinel-2»; vuelve a OpenStreetMap cuando quieras.`);
+  }
+  async function dropZone(z) {
+    const list = (await zones()).filter((x) => x.id !== z.id), keep = new Set(list.flatMap((x) => tilesOf(x.b)));
+    const cache = await caches.open(ZONES);
+    for (const u of tilesOf(z.b)) if (!keep.has(u)) await cache.delete(u);
+    await idb.put("kv", list, "zones"); renderZones(); msg(`«${z.name}» quitada de este dispositivo.`);
+  }
+  apply(); list(); renderZones();
   return { setOffline, coverHere };
 }

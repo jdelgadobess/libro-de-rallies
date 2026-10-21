@@ -1,12 +1,12 @@
 // Keeps the page, its libraries and the map tiles already seen, so the program opens without internet.
-const APP = "libro-app-v61", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
+const APP = "libro-app-v62", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", ZONES = "libro-zonas", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
 const SHELL = ["./", "index.html", "app.js", "mapas.js", "rutas.js", "mecanica.js", "coches.js", "gps.js", "style.css", "config.js", "manifest.webmanifest", "img/icono-192.png", "img/fondo.jpg"];
 const LIB_HOSTS = ["cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com"];
-const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org)$/;
+const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org|tiles\.maps\.eox\.at)$/;
 
 self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL)).catch(() => {})); });
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
-  for (const k of await caches.keys()) if (![APP, LIBS, TILES].includes(k)) await caches.delete(k);
+  for (const k of await caches.keys()) if (![APP, LIBS, TILES, ZONES].includes(k)) await caches.delete(k);
   await self.clients.claim();
 })()));
 
@@ -32,8 +32,13 @@ async function cacheFirst(req) {
 // «Trabajar sin conexión»: only the tiles already kept, without trying the network
 async function cacheOnly(u) {
   u.searchParams.delete("lr_off");
-  const hit = await (await caches.open(TILES)).match(u.href);
+  const hit = (await (await caches.open(ZONES)).match(u.href)) || (await (await caches.open(TILES)).match(u.href));
   return hit || new Response("", { status: 504 });
+}
+// satellite downloaded for a zone first, then the tiles seen before / the network
+async function zoneFirst(req) {
+  const hit = await (await caches.open(ZONES)).match(req.url);
+  return hit || networkFirst(req, TILES, true);
 }
 let trimming = false;
 function trimSoon(c) {
@@ -50,5 +55,6 @@ self.addEventListener("fetch", (e) => {
   const u = new URL(req.url);
   if (u.origin === self.location.origin) e.respondWith(networkFirst(req, APP));
   else if (LIB_HOSTS.includes(u.hostname)) e.respondWith(cacheFirst(req));
-  else if (TILE_HOSTS.test(u.hostname)) e.respondWith(u.searchParams.has("lr_off") ? cacheOnly(u) : networkFirst(req, TILES, true));
+  // tiles drawn by the map (images); the satellite download (a plain fetch) goes straight to the network
+  else if (TILE_HOSTS.test(u.hostname) && req.destination === "image") e.respondWith(u.searchParams.has("lr_off") ? cacheOnly(u) : zoneFirst(req));
 });

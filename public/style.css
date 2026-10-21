@@ -409,12 +409,12 @@ input.sw:checked::after { transform: translateX(16px) }
 .layersbar #lyFiles:empty, .layersbar #lyDl:empty { display: none }
 .layersbar .lysub { flex-basis: 100%; font-size: .78rem; font-weight: 600; color: var(--muted); margin-top: 4px }
 .layersbar #lyFiles > .msg { flex-basis: 100% }
-.layersbar label.mapcard { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet-solid); cursor: pointer; min-width: 190px; flex: 0 1 auto; transition: border-color .15s }
-.layersbar label.mapcard:has(input:checked) { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green) }
+.layersbar .mapcard { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet-solid); cursor: pointer; min-width: 190px; flex: 0 1 auto; transition: border-color .15s }
+.layersbar .mapcard:has(input:checked) { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green) }
 .layersbar .nm { display: grid; line-height: 1.2; font-weight: 600; font-size: .85rem; color: var(--ink); text-align: left; flex: 1 }
 .layersbar .nm small { font-weight: 400; font-size: .74rem; color: var(--muted); font-family: var(--mono) }
-.layersbar label.mapcard button.x { border: 0; background: transparent; color: var(--muted); font-size: .9rem; padding: 2px 6px; margin-left: 4px }
-.layersbar label.mapcard button.x:hover { color: var(--danger) }
+.layersbar .mapcard button.x { border: 0; background: transparent; color: var(--muted); font-size: .9rem; padding: 2px 6px; margin-left: 4px }
+.layersbar .mapcard button.x:hover { color: var(--danger) }
 .layersbar button.dl { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; border-style: dashed; min-width: 190px }
 .layersbar button.dl b { font-size: 1.05rem; color: var(--blue) }
 .layersbar button.dl.hl { border-style: solid }
@@ -481,3 +481,5 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 .hero .sub { font-size: .95rem; margin-top: 4px }
 .eyebrow { margin-bottom: 6px }
 @media (pointer: coarse), (max-width: 700px) { .hero { min-height: 0; padding-block: 10px; background-position: 50% 80% } .hero h1 { font-size: 1.6rem } }
+.layersbar #lyZones { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; align-items: stretch }
+.layersbar .mapcard.zone .nm { cursor: pointer }

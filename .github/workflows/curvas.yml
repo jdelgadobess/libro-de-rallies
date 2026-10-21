@@ -57,6 +57,7 @@ jobs:
                   ft = json.loads(line); e = int(round(ft["properties"]["ele"]))
                   if e <= 0: continue
                   ft["properties"] = {"ele": e, "idx": 1 if e % 100 == 0 else 0}
+                  if e % 100 == 0: ft["properties"]["lbl"] = f"{e} m"
                   ft["tippecanoe"] = {"minzoom": 9 if e % 100 == 0 else 11 if e % 50 == 0 else 12}
                   o.write(json.dumps(ft, separators=(",", ":")) + "\n")
           PY

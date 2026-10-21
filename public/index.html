@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Libro de Rallies</title>
-<meta name="description" content="Pruebas de rally por año y etapa, con sus waypoints leídos del roadbook.">
+<meta name="description" content="Roadbook digital para raids: lee los waypoints con una foto, navega con GPS y avisos de desvío, y sigue sin cobertura con los mapas off-road y las curvas de nivel en tu dispositivo.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Libro de Rallies · Roadbook digital para raids">
+<meta property="og:description" content="Waypoints desde una foto del roadbook, navegación GPS con avisos y mapas off-road sin conexión. Marruecos y España.">
+<meta property="og:image" content="https://libro-de-rallies-7rx7.vercel.app/img/fondo.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#c1272d">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
@@ -24,8 +29,9 @@
 <body>
 <div class="hero"><div class="in">
   <div>
+    <p class="eyebrow">Roadbook digital para raids · Marruecos y España</p>
     <h1>Libro de <span>Rallies</span></h1>
-    <p class="sub">Cada año, cada etapa y sus waypoints, leídos de las fotos del roadbook y listos para el GPS, Google Maps y Google Earth.</p>
+    <p class="sub">Del roadbook en papel a la pista: waypoints leídos con una foto, navegación GPS con avisos y mapas que funcionan sin cobertura.</p>
   </div>
   <div style="display:grid;gap:10px;justify-items:end">
     <div class="userbar" id="userbar" hidden><img id="uPhoto" alt=""><span id="uName"></span><button type="button" id="passBtn">Contraseña</button><button type="button" id="logout">Salir</button></div>
@@ -50,6 +56,12 @@
       <button type="submit" class="hl">Entrar</button>
     </form>
     <div class="btns" style="justify-content:center"><button type="button" id="claim" hidden>Ser el administrador</button></div>
+  </section>
+  <section class="features" id="features" hidden aria-label="Qué hace el programa">
+    <div><span class="ic">📷</span><h3>Roadbook en segundos</h3><p>Haz una foto a la página y los waypoints, coordenadas y puntos se leen solos.</p></div>
+    <div><span class="ic">🧭</span><h3>Navegación con avisos</h3><p>Sigue la ruta con la flecha del GPS, el mapa girando con la marcha y aviso si te desvías.</p></div>
+    <div><span class="ic">📴</span><h3>Sin cobertura</h3><p>Mapas off-road y curvas de nivel guardados en el móvil o la tablet, para el desierto.</p></div>
+    <div><span class="ic">🛰️</span><h3>A tu GPS</h3><p>Exporta a Garmin, OsmAnd, Google Maps y Google Earth con un toque.</p></div>
   </section>
 
   <div id="app" hidden>
@@ -272,7 +284,7 @@
           <span id="lyFiles"></span>
           <span id="lyDl"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 54</span>
+          <span class="msg ver">Versión 55</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>
@@ -376,6 +388,13 @@
   </section>
 </div>
 
+<footer class="sitefoot">
+  <div class="in">
+    <span class="brand">Libro de <b>Rallies</b></span>
+    <span>Roadbook digital para raids · Marruecos y España</span>
+    <span class="small">Mapas © OpenStreetMap · Curvas © Copernicus DEM</span>
+  </div>
+</footer>
 <script type="module" src="app.js"></script>
 </body>
 </html>

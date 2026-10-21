@@ -137,7 +137,7 @@ $("claim").onclick = async () => {
 function gate(title, text, { login = false, claim = false } = {}) {
   $("gate").hidden = false; $("app").hidden = true;
   $("gateTitle").textContent = title; $("gateText").textContent = text;
-  $("login").hidden = !login; $("claim").hidden = !claim;
+  $("login").hidden = !login; $("claim").hidden = !claim; $("features").hidden = !login; document.querySelector(".hero .stats").hidden = login;
 }
 
 async function roleFor() {
@@ -156,7 +156,7 @@ async function offlineBoot() {
   if (!snap) { gate("Sin conexión", "No hay internet y este dispositivo aún no tiene copia. Abre la web una vez con conexión y quedará guardada."); return; }
   Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks });
   $("userbar").hidden = false; $("uName").textContent = snap.email; $("uPhoto").hidden = true;
-  $("gate").hidden = true; $("app").hidden = false;
+  $("gate").hidden = true; $("features").hidden = true; document.querySelector(".hero .stats").hidden = false; $("app").hidden = false;
   document.body.classList.add("viewer-only-hide"); $("adminPanel").hidden = true;
   render(); loadMaps();
   showNotice(`Sin conexión: ves la copia guardada el ${new Date(snap.at).toLocaleString("es")}. Los mapas sin conexión funcionan; para guardar cambios hace falta internet.`);
@@ -207,7 +207,7 @@ async function boot(user) {
   if (role === "unclaimed") { gate("Web nueva", "Nadie administra todavía esta web. Si es tuya, pulsa el botón y serás el administrador.", { claim: true }); return; }
   if (!role) { gate("Sin acceso", `Tu cuenta (${user.email}) no tiene acceso. Pide al administrador que te dé permiso.`); return; }
   state.role = role;
-  $("gate").hidden = true; $("app").hidden = false;
+  $("gate").hidden = true; $("features").hidden = true; document.querySelector(".hero .stats").hidden = false; $("app").hidden = false;
   document.body.classList.toggle("viewer-only-hide", !canEdit());
   $("adminPanel").hidden = role !== "admin";
   // changes made by anyone show up for everyone with the page open

@@ -127,7 +127,7 @@ function contourStyle() {
       { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: "#8b4513", width: 1.5, opacity: 0.85 }), filter: (z, f) => !!f.props.idx },
     ],
     labelRules: [
-      { dataLayer: "contours", symbolizer: new P.LineLabelSymbolizer({ labelProps: ["lbl"], fill: "#6b3410", stroke: "#fff8e8", width: 2.5, font: "500 11px sans-serif" }), filter: (z, f) => !!f.props.idx, minzoom: 12 },
+      { dataLayer: "contours", symbolizer: new P.LineLabelSymbolizer({ labelProps: ["lbl"], fill: "#6b3410", stroke: "#fff8e8", width: 2.5, font: "500 11px sans-serif" }), filter: (z, f) => !!f.props.idx, minzoom: 10 },
     ],
   };
 }

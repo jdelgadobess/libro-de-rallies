@@ -1,0 +1,72 @@
+name: Curvas de nivel
+
+# Builds curvas-<zona>.pmtiles: contour lines every 20 m from the Copernicus DEM (90 m, open data),
+# to import in the program next to the off-road map and see them without internet.
+on:
+  workflow_dispatch:
+    inputs:
+      zona:
+        description: "marruecos o espana"
+        default: marruecos
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ZONA: ${{ inputs.zona }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq gdal-bin build-essential libsqlite3-dev zlib1g-dev
+          git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+          make -s -C /tmp/tippecanoe -j4 && sudo make -s -C /tmp/tippecanoe install
+          tippecanoe --version; gdal_contour --version
+      - name: Modelo del terreno
+        run: |
+          # whole-degree tiles: south/north latitudes and west/east longitudes of the area
+          case "$ZONA" in
+            marruecos) S=27; N=35; W=-14; E=-1 ;;
+            espana)    S=36; N=43; W=-10; E=4 ;;
+            *) echo "zona desconocida"; exit 1 ;;
+          esac
+          mkdir dem
+          for lat in $(seq $S $N); do for lon in $(seq $W $E); do
+            ns=$([ $lat -ge 0 ] && echo N || echo S); ew=$([ $lon -ge 0 ] && echo E || echo W)
+            n=$(printf "Copernicus_DSM_COG_30_%s%02d_00_%s%03d_00_DEM" $ns ${lat#-} $ew ${lon#-})
+            curl -sf -o dem/$n.tif "https://copernicus-dem-90m.s3.eu-central-1.amazonaws.com/$n/$n.tif" && echo "$n" || true
+          done; done
+          ls dem | wc -l
+          gdalbuildvrt -q dem.vrt dem/*.tif
+      - name: Curvas
+        run: |
+          gdal_contour -q -a ele -i 20 -f GeoJSONSeq dem.vrt curvas.geojsons
+          ls -la curvas.geojsons
+          # the master lines (every 100 m) from far out, the 50 m ones closer, the rest only up close
+          python3 - <<'PY'
+          import json
+          with open("curvas.geojsons") as f, open("curvas2.geojsons", "w") as o:
+              for line in f:
+                  line = line.strip().lstrip("\x1e")
+                  if not line: continue
+                  ft = json.loads(line); e = int(round(ft["properties"]["ele"]))
+                  if e <= 0: continue
+                  ft["properties"] = {"ele": e, "idx": 1 if e % 100 == 0 else 0}
+                  ft["tippecanoe"] = {"minzoom": 9 if e % 100 == 0 else 11 if e % 50 == 0 else 12}
+                  o.write(json.dumps(ft, separators=(",", ":")) + "\n")
+          PY
+          rm curvas.geojsons
+          tippecanoe -q -o curvas-$ZONA.pmtiles -l contours -Z9 -z13 -P --simplification=4 \
+            --drop-densest-as-needed --extend-zooms-if-still-dropping --force curvas2.geojsons
+          ls -la curvas-$ZONA.pmtiles
+      - name: Publicar
+        run: |
+          MB=$(( $(stat -c %s curvas-$ZONA.pmtiles) / 1048576 ))
+          gh release delete curvas-$ZONA -y --cleanup-tag || true
+          gh release create curvas-$ZONA curvas-$ZONA.pmtiles --title "Curvas de nivel ($ZONA)" \
+            --notes "Curvas cada 20 m del modelo Copernicus DEM (90 m), $MB MB. © DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH 2014-2018, distribuido por COPERNICUS (Unión Europea y ESA). Descárgalo e impórtalo en el paso 3 del programa: «Importar mapa off-road»."

@@ -483,3 +483,12 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 @media (pointer: coarse), (max-width: 700px) { .hero { min-height: 0; padding-block: 10px; background-position: 50% 80% } .hero h1 { font-size: 1.6rem } }
 .layersbar #lyZones { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; align-items: stretch }
 .layersbar .mapcard.zone .nm { cursor: pointer }
+
+/* «Dar acceso» as a window over the page */
+.accwrap { position: fixed; inset: 0; z-index: 3000; background: rgba(20, 12, 6, .55); display: flex; align-items: flex-start; justify-content: center; padding: 8vh 16px 16px; overflow-y: auto }
+.accwrap[hidden] { display: none }
+.accpop { position: relative; width: min(560px, 100%); margin: 0; box-shadow: 0 18px 50px rgba(0,0,0,.35) }
+.accpop .accx { position: absolute; top: 10px; right: 10px; padding: 4px 10px }
+.accpop h2 { padding-right: 48px }
+#moreWays[hidden] { display: none }
+.userbar button { white-space: nowrap }

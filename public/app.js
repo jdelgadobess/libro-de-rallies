@@ -157,7 +157,7 @@ async function offlineBoot() {
   Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks });
   $("userbar").hidden = false; $("uName").textContent = snap.email; $("uPhoto").hidden = true;
   $("gate").hidden = true; $("features").hidden = true; $("app").hidden = false;
-  document.body.classList.add("viewer-only-hide"); $("adminPanel").hidden = true;
+  document.body.classList.add("viewer-only-hide"); $("accBtn").hidden = true;
   render(); loadMaps();
   showNotice(`Sin conexión: ves la copia guardada el ${new Date(snap.at).toLocaleString("es")}. Los mapas sin conexión funcionan; para guardar cambios hace falta internet.`);
 }
@@ -209,7 +209,7 @@ async function boot(user) {
   state.role = role;
   $("gate").hidden = true; $("features").hidden = true; $("app").hidden = false;
   document.body.classList.toggle("viewer-only-hide", !canEdit());
-  $("adminPanel").hidden = role !== "admin";
+  $("accBtn").hidden = role !== "admin";
   // changes made by anyone show up for everyone with the page open
   channel = sb.channel("libro")
     .on("postgres_changes", { event: "*", schema: "public", table: "rallies" }, reloadSoon)
@@ -1037,22 +1037,12 @@ function renderRecTab() {
         gx.onclick = () => routeGpx(t.name, t.segs, [], stageKey(t), t.rallyId);
         li.append(sw, nm, see, gx);
         if (canEdit()) {
-          // move the recording to another stage of the same year
-          const sel = document.createElement("select"); sel.title = "Pasar a otra etapa";
-          const opts = [...new Set([...state.wps.filter((w) => w.rallyId === r.id).map(stageKey), ...state.tracks.filter((x) => x.rallyId === r.id).map(stageKey), st])].filter((k) => k !== "").sort(natural);
-          sel.append(new Option("Sin etapa", ""));
-          opts.forEach((k) => sel.append(new Option(stageLabel(k), k)));
-          sel.value = st;
-          sel.onchange = async () => {
-            try { must(await sb.from("tracks").update({ stage: sel.value }).eq("id", t.id)); $("recTabMsg").textContent = `«${t.name}» pasada a ${stageLabel(sel.value).toLowerCase()}.`; await loadAll(); renderRecTab(); }
-            catch (e) { $("recTabMsg").textContent = writeErr(e); sel.value = st; }
-          };
           const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Borrar";
           del.onclick = async () => {
             if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "¿Seguro?"; del.className = "warn"; return; }
             try { must(await sb.from("tracks").delete().eq("id", t.id)); if (filt.rec === t.id) filt.rec = null; await loadAll(); renderRecTab(); } catch (e) { $("recTabMsg").textContent = writeErr(e); }
           };
-          li.append(sel, del);
+          li.append(del);
         }
         ul.append(li);
       });
@@ -1360,7 +1350,7 @@ function updateParsed() {
 }
 $("wLat").addEventListener("input", updateParsed); $("wLon").addEventListener("input", updateParsed);
 function startEdit(w) {
-  $("moreWays").open = true; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
+  $("moreWays").hidden = false; $("moreWays").open = true; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
   $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || ""; $("wPts").value = w.pts || "";
   $("wLat").value = fmtCoord(w.lat, true, "dm"); $("wLon").value = fmtCoord(w.lon, false, "dm");
   $("wCancel").hidden = false; $("wSave").textContent = "Guardar cambios"; updateParsed();
@@ -1368,9 +1358,15 @@ function startEdit(w) {
 }
 function clearWp() {
   ["wEditing", "wName", "wPage", "wDesc", "wLat", "wLon", "wPts"].forEach((i) => $(i).value = "");
-  $("wCancel").hidden = true; $("wSave").textContent = "Guardar waypoint"; updateParsed();
+  $("wCancel").hidden = true; $("wSave").textContent = "Guardar waypoint"; updateParsed(); $("moreWays").hidden = true;
 }
 $("wCancel").onclick = clearWp;
+// «Dar acceso» opens over the page from the bar with Contraseña and Salir
+const accShow = (on) => { $("accWrap").hidden = !on; if (on) $("mEmail").focus(); };
+$("accBtn").onclick = () => accShow(true);
+$("accClose").onclick = () => accShow(false);
+$("accWrap").onclick = (e) => { if (e.target === $("accWrap")) accShow(false); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("accWrap").hidden) accShow(false); });
 $("wpForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const la = parseCoord($("wLat").value, true), lo = parseCoord($("wLon").value, false);

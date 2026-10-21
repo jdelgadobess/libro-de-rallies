@@ -34,7 +34,7 @@
     <p class="sub">Del roadbook en papel a la pista: waypoints leídos con una foto, navegación GPS con avisos y mapas que funcionan sin cobertura.</p>
   </div>
   <div style="display:grid;gap:10px;justify-items:end">
-    <div class="userbar" id="userbar" hidden><img id="uPhoto" alt=""><span id="uName"></span><button type="button" id="passBtn">Contraseña</button><button type="button" id="logout">Salir</button></div>
+    <div class="userbar" id="userbar" hidden><img id="uPhoto" alt=""><span id="uName"></span><button type="button" id="accBtn" hidden>Dar acceso</button><button type="button" id="passBtn">Contraseña</button><button type="button" id="logout">Salir</button></div>
     <div class="stats" aria-live="polite" hidden>
       <div><b id="stYears">0</b>años</div>
       <div><b id="stStages">0</b>etapas</div>
@@ -165,8 +165,8 @@
         </div>
         <p class="msg" id="mapImpMsg"></p>
 
-        <details id="moreWays" data-edit>
-          <summary>Añadir un waypoint a mano</summary>
+        <details id="moreWays" data-edit hidden>
+          <summary>Editar waypoint</summary>
           <form id="wpForm">
             <input type="hidden" id="wEditing">
             <div class="row2">
@@ -187,25 +187,6 @@
         </details>
       </section>
 
-      <section class="panel" id="adminPanel" data-libro hidden>
-        <h2>Acceso <small>Quién puede entrar</small></h2>
-        <ul class="members" id="members"></ul>
-        <form id="memberForm">
-          <div class="row2">
-            <label>Correo <input id="mEmail" type="email" required placeholder="nombre@gmail.com"></label>
-            <label>Permiso
-              <select id="mRole">
-                <option value="viewer">Solo ver</option>
-                <option value="editor">Ver y añadir</option>
-                <option value="admin">Administrador</option>
-              </select>
-            </label>
-          </div>
-          <label>Contraseña para esa persona <input id="mPass" minlength="8" autocomplete="off" placeholder="Déjala vacía si ya tiene cuenta"></label>
-          <div class="btns"><button type="button" class="ghost" id="mGen">Inventar contraseña</button><button type="submit">Dar acceso</button></div>
-          <p class="msg" id="mMsg"></p>
-        </form>
-      </section>
     </div>
 
     <div class="col">
@@ -288,7 +269,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 62</span>
+          <span class="msg ver">Versión 63</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>
@@ -363,7 +344,7 @@
   </section>
   <section class="panel recs" id="recTab">
     <h2>Rutas grabadas <small>Todas las rutas grabadas con el GPS</small></h2>
-    <p class="hint">Graba desde el mapa con «⏺ Grabar ruta». Si al grabar tienes elegida una etapa, la ruta queda guardada en esa etapa y sale con sus waypoints y trazas. Aquí puedes pasar una grabación a otra etapa.</p>
+    <p class="hint">Graba desde el mapa con «⏺ Grabar ruta». Si al grabar tienes elegida una etapa, la ruta queda guardada en esa etapa y sale con sus waypoints y trazas.</p>
     <p class="msg" id="recTabMsg"></p>
     <div id="recAll"></div>
   </section>
@@ -401,5 +382,27 @@
   </div>
 </footer>
 <script type="module" src="app.js"></script>
+<div class="accwrap" id="accWrap" hidden>
+      <section class="panel accpop" id="adminPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+        <button type="button" class="ghost accx" id="accClose" aria-label="Cerrar">✕</button>
+        <h2 id="accTitle">Dar acceso <small>Quién puede entrar</small></h2>
+        <ul class="members" id="members"></ul>
+        <form id="memberForm">
+          <div class="row2">
+            <label>Correo <input id="mEmail" type="email" required placeholder="nombre@gmail.com"></label>
+            <label>Permiso
+              <select id="mRole">
+                <option value="viewer">Solo ver</option>
+                <option value="editor">Ver y añadir</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+          </div>
+          <label>Contraseña para esa persona <input id="mPass" minlength="8" autocomplete="off" placeholder="Déjala vacía si ya tiene cuenta"></label>
+          <div class="btns"><button type="button" class="ghost" id="mGen">Inventar contraseña</button><button type="submit">Dar acceso</button></div>
+          <p class="msg" id="mMsg"></p>
+        </form>
+      </section>
+</div>
 </body>
 </html>

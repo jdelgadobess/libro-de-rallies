@@ -475,3 +475,9 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 .stagetrk .tracks .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto }
 .stagetrk .tracks .acts button { padding: 5px 10px; font-size: .8rem }
 .tabdl { flex-basis: 100%; border-top: 1px dashed var(--line); padding-top: 10px }
+/* a lower photo band, so the work starts higher on the screen */
+.hero { min-height: clamp(170px, 26vh, 240px); padding-block: 16px 14px; background-position: 50% 62% }
+.hero h1 { font-size: clamp(2rem, 4.5vw, 3rem) }
+.hero .sub { font-size: .95rem; margin-top: 4px }
+.eyebrow { margin-bottom: 6px }
+@media (pointer: coarse), (max-width: 700px) { .hero { min-height: 0; padding-block: 10px; background-position: 50% 80% } .hero h1 { font-size: 1.6rem } }

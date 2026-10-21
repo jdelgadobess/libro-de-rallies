@@ -464,3 +464,4 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
   .tabs button { padding: 8px 13px; font-size: .95rem }
   section.panel { padding: 14px }
 }
+.stagebar { align-items: center; justify-content: space-between }

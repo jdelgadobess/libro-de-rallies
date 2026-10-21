@@ -93,17 +93,17 @@
 
       <section class="panel">
         <h2><span class="n">2</span>Etapa</h2>
-        <div class="btns" style="align-items:center">
+        <div class="btns stagebar">
           <label style="grid-auto-flow:column;align-items:center;gap:10px">Nº de etapa <input class="big" id="stageNo" type="number" min="0" max="30" inputmode="numeric" placeholder="—"></label>
-          <button type="button" class="chip" id="allStages" aria-pressed="false">Todas</button>
+          <span data-edit><button type="button" class="ghost" id="stageDel" hidden>Eliminar etapa</button></span>
+          <button type="button" class="chip" id="allStages" aria-pressed="false" hidden>Todas</button>
         </div>
-        <div class="chips" id="stageChips" style="margin-top:8px"></div>
-        <p class="hint" id="stageHint"></p>
-        <div class="trkpick">
+        <div class="chips" id="stageChips" hidden></div>
+        <p class="hint" id="stageHint" hidden></p>
+        <div class="trkpick" hidden>
           <label>Ruta de la etapa <select id="fTrk"><option value="">Todas</option></select></label>
           <button type="button" class="ghost" id="fTrkDel" data-edit disabled>Eliminar ruta</button>
         </div>
-        <div class="btns" data-edit><button type="button" class="ghost" id="stageDel" hidden>Eliminar etapa</button></div>
       </section>
 
       <section class="panel plan" id="planPanel">
@@ -284,7 +284,7 @@
           <span id="lyFiles"></span>
           <span id="lyDl"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 55</span>
+          <span class="msg ver">Versión 56</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>

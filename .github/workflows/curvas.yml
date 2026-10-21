@@ -23,15 +23,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Herramientas
         run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
           # the end of the output goes into an annotation when something fails, so it can be read without the logs
           {
             sudo apt-get update -qq && sudo apt-get install -y -qq gdal-bin build-essential libsqlite3-dev zlib1g-dev &&
             git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe &&
             make -C /tmp/tippecanoe -j4 && sudo make -C /tmp/tippecanoe install
           } > tools.log 2>&1 || { echo "::error::$(tail -c 1500 tools.log | tr '\n' '|')"; exit 1; }
-          which tippecanoe; gdal_contour --version
+          echo "::notice::$(command -v tippecanoe) · $(gdal-config --version 2>&1) · $(command -v gdal_contour)"
       - name: Modelo del terreno
         run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
           # whole-degree tiles: south/north latitudes and west/east longitudes of the area
           case "$ZONA" in
             marruecos) S=27; N=35; W=-14; E=-1 ;;
@@ -48,6 +50,7 @@ jobs:
           gdalbuildvrt -q dem.vrt dem/*.tif
       - name: Curvas
         run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
           gdal_contour -q -a ele -i 20 -f GeoJSONSeq dem.vrt curvas.geojsons
           ls -la curvas.geojsons
           # the master lines (every 100 m) from far out, the 50 m ones closer, the rest only up close
@@ -70,6 +73,7 @@ jobs:
           ls -la curvas-$ZONA.pmtiles
       - name: Publicar
         run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
           MB=$(( $(stat -c %s curvas-$ZONA.pmtiles) / 1048576 ))
           gh release delete curvas-$ZONA -y --cleanup-tag || true
           gh release create curvas-$ZONA curvas-$ZONA.pmtiles --title "Curvas de nivel ($ZONA)" \

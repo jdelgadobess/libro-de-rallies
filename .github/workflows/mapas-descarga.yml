@@ -1,0 +1,55 @@
+name: Mapas para descargar desde el programa
+
+# The browser can't download the release files straight from GitHub (no CORS there), so the maps are also
+# published in pieces of 45 MB on the «mapas» branch, which raw.githubusercontent.com serves to any web page.
+# The program downloads the pieces one by one into the phone or tablet.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency: mapas-descarga
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Trozos
+        run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
+          mkdir out && cd out
+          echo "[" > mapas.json; first=1
+          # id | release tag | file | name shown
+          while IFS='|' read id tag file name; do
+            gh release download "$tag" -R "$GITHUB_REPOSITORY" -p "$file" || { echo "::warning::sin $file"; continue; }
+            size=$(stat -c %s "$file")
+            split -b 45M -d -a 3 "$file" "$file."
+            rm "$file"
+            parts=$(ls "$file".* | wc -l)
+            [ $first = 1 ] || echo "," >> mapas.json; first=0
+            printf '{"id":"%s","file":"%s","name":"%s","size":%s,"parts":%s}' "$id" "$file" "$name" "$size" "$parts" >> mapas.json
+          done <<'EOF'
+          marruecos|mapa-marruecos|marruecos.pmtiles|Marruecos
+          curvas-marruecos|curvas-marruecos|curvas-marruecos.pmtiles|Curvas de nivel de Marruecos
+          espana|mapa-espana|espana.pmtiles|España
+          curvas-espana|curvas-espana|curvas-espana.pmtiles|Curvas de nivel de España
+          EOF
+          echo "]" >> mapas.json
+          cat mapas.json; du -sh .
+      - name: Publicar en la rama mapas
+        run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
+          cd out
+          git init -q -b mapas && git config user.name "github-actions" && git config user.email "github-actions@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # GitHub takes at most 2 GB per push: Spain goes in a second push
+          git add mapas.json marruecos.* curvas-* && git commit -qm "Mapas de Marruecos y curvas"
+          git push -q -f origin mapas
+          if ls espana.pmtiles.* >/dev/null 2>&1; then git add espana.pmtiles.* && git commit -qm "Mapa de España" && git push -q origin mapas; fi
+          echo "::notice::rama mapas publicada"

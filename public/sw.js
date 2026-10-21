@@ -1,5 +1,5 @@
 // Keeps the page, its libraries and the map tiles already seen, so the program opens without internet.
-const APP = "libro-app-v46", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
+const APP = "libro-app-v47", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
 const SHELL = ["./", "index.html", "app.js", "mapas.js", "rutas.js", "mecanica.js", "coches.js", "gps.js", "style.css", "config.js", "manifest.webmanifest", "img/icono-192.png", "img/fondo.jpg"];
 const LIB_HOSTS = ["cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org)$/;
@@ -29,6 +29,12 @@ async function cacheFirst(req) {
   if (res.ok || res.type === "opaque") c.put(req, res.clone());
   return res;
 }
+// «Trabajar sin conexión»: only the tiles already kept, without trying the network
+async function cacheOnly(u) {
+  u.searchParams.delete("lr_off");
+  const hit = await (await caches.open(TILES)).match(u.href);
+  return hit || new Response("", { status: 504 });
+}
 let trimming = false;
 function trimSoon(c) {
   if (trimming) return; trimming = true;
@@ -44,5 +50,5 @@ self.addEventListener("fetch", (e) => {
   const u = new URL(req.url);
   if (u.origin === self.location.origin) e.respondWith(networkFirst(req, APP));
   else if (LIB_HOSTS.includes(u.hostname)) e.respondWith(cacheFirst(req));
-  else if (TILE_HOSTS.test(u.hostname)) e.respondWith(networkFirst(req, TILES, true));
+  else if (TILE_HOSTS.test(u.hostname)) e.respondWith(u.searchParams.has("lr_off") ? cacheOnly(u) : networkFirst(req, TILES, true));
 });

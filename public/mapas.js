@@ -101,6 +101,20 @@ function offroadStyle() {
   ];
   return { paintRules: areas(paintRules), labelRules }; // no background: outside its area the map underneath must still show
 }
+// contour lines (curvas-*.pmtiles): brown, thicker every 100 m with its height written on it
+const isContours = (m) => /^curvas/i.test(m.file || "");
+function contourStyle() {
+  const P = window.protomapsL;
+  return {
+    paintRules: [
+      { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: "#9c5a2b", width: 0.7, opacity: 0.65 }), filter: (z, f) => !f.props.idx },
+      { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: "#8b4513", width: 1.5, opacity: 0.85 }), filter: (z, f) => !!f.props.idx },
+    ],
+    labelRules: [
+      { dataLayer: "contours", symbolizer: new P.LineLabelSymbolizer({ labelProps: ["lbl"], fill: "#6b3410", stroke: "#fff8e8", width: 2.5, font: "500 11px sans-serif" }), filter: (z, f) => !!f.props.idx, minzoom: 12 },
+    ],
+  };
+}
 
 const one = (db, q, p) => { const st = db.prepare(q); st.bind(p || []); const r = st.step() ? st.get() : null; st.free(); return r; };
 function mimeOf(b) {
@@ -151,7 +165,7 @@ export function openTiles(SQL, bytes) {
 // the off-road map kept on this device that covers a point (Morocco, Spain…), for the route planner; null if none
 const orCache = new Map();
 export async function offroadMap(at) {
-  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || ""));
+  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m));
   if (!maps.length) return null;
   const open = async (m) => { if (!orCache.has(m.id)) orCache.set(m.id, { id: m.id, name: m.name, ...(await openPmtiles(m.blob, m.id)) }); return orCache.get(m.id); };
   let found = null;
@@ -176,9 +190,11 @@ export function setupLayers(lmap) {
     L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }),
     L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19 }),
   ]);
-  lmap.createPane("base").style.zIndex = 200;
-  lmap.createPane("offline").style.zIndex = 250;
-  lmap.createPane("sat").style.zIndex = 300;
+  lmap.createPane("base", lmap._rotatePane).style.zIndex = 200;
+  lmap.createPane("offline", lmap._rotatePane).style.zIndex = 250;
+  lmap.createPane("sat", lmap._rotatePane).style.zIndex = 300;
+  lmap.createPane("contours", lmap._rotatePane).style.zIndex = 320; // over the satellite too
+  lmap.getPane("contours").style.pointerEvents = "none";
   Object.values(bases).forEach((l) => { l.options.pane = "base"; });
   sat.eachLayer((l) => { l.options.pane = "sat"; });
 
@@ -218,7 +234,9 @@ export function setupLayers(lmap) {
     let src, layer;
     if (/\.pmtiles$/i.test(m.file || "")) {
       src = await openPmtiles(m.blob, m.id); await script(PROTOMAPS_JS);
-      layer = window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", bounds: src.bounds, attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
+      layer = isContours(m)
+        ? window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "contours", bounds: src.bounds, attribution: "Curvas © Copernicus DEM", ...contourStyle() })
+        : window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", bounds: src.bounds, attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
       src.close = () => {};
     } else {
       const SQL = await sqlLib();
@@ -235,7 +253,7 @@ export function setupLayers(lmap) {
     const box = $("lyFiles"); box.textContent = "";
     let maps = [];
     try { maps = await idb.all("maps"); } catch (e) { msg("Este navegador no deja guardar mapas sin conexión."); return; }
-    if (!maps.some((m) => /\.pmtiles$/i.test(m.file || ""))) {
+    if (!maps.some((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m))) {
       const p = document.createElement("span"); p.className = "msg";
       p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd). Descárgalo e impórtalo en el paso 3, en «Importar mapa off-road».";
       box.append(p);
@@ -271,7 +289,7 @@ export function setupLayers(lmap) {
         await idb.put("maps", m);
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
         if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
-        await list(); turnOff(m.id); await turnOn(m, true); satOff();
+        await list(); turnOff(m.id); await turnOn(m, !isContours(m)); if (!isContours(m)) satOff();
         msg(`Guardado ${m.name} en este dispositivo: funciona sin internet. Lo encienden y apagan las casillas encima del mapa. He apagado el satélite para que se vea; vuelve a marcarlo si lo quieres encima.`);
       } catch (er) { msg(`${f.name}: ${/not a database|malformed/i.test(er.message) ? "no es un archivo de mapa válido" : er.message}`); }
     }
@@ -283,5 +301,19 @@ export function setupLayers(lmap) {
     d.addEventListener("dragleave", () => d.classList.remove("over"));
     d.addEventListener("drop", (e) => { e.preventDefault(); d.classList.remove("over"); importMaps([...e.dataTransfer.files]); });
   });
+  // without a connection the online maps only show what this device already keeps (no data spent, no waiting)
+  const online = [...Object.values(bases), ...sat.getLayers()];
+  online.forEach((l) => { l.options.home = l._url; });
+  function setOffline(on) {
+    online.forEach((l) => { const u = on ? l.options.home + "?lr_off=1" : l.options.home; if (l._url !== u) l.setUrl(u); });
+  }
+  // turns on the off-road map kept here that covers where I am
+  async function coverHere(at) {
+    let o = null; try { o = await offroadMap(at); } catch (e) {}
+    if (!o) return "Sin conexión, pero no tienes guardado el mapa de esta zona: con internet, impórtalo en el paso 3 («Importar mapa off-road»). Solo verás lo que ya hayas visto antes.";
+    if (!pref.on.includes(o.id)) { pref.on.push(o.id); save(); await list(); }
+    return `Sin conexión: uso el mapa «${o.name}» guardado en el dispositivo y el satélite que ya hayas visto antes.`;
+  }
   apply(); list();
+  return { setOffline, coverHere };
 }

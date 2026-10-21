@@ -40,13 +40,20 @@ function beep(times, ms, hz) {
 }
 const say = (t) => { try { if (!("speechSynthesis" in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = "es-ES"; u.rate = 1; speechSynthesis.speak(u); } catch (e) {} };
 
-export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes, waypoints }) {
+export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes, waypoints, layers, busy }) {
   const layer = L.layerGroup().addTo(map), recLayer = L.layerGroup().addTo(map);
   // on a phone or tablet the map comes in close when the GPS starts following, so tracks and the way ahead read well;
   // after that the zoom is the driver's (+ and -)
   const CLOSE = window.matchMedia && matchMedia("(pointer: coarse)").matches ? 17 : 15;
   let zoomIn = true;
   let watch = null, follow = true, last = null, rec = null, wake = null, dot = null, ring = null, head = null, recLine = null, pendingTry = false;
+  let course; // where I'm heading, degrees from north: the GPS's own when moving, else from the last metres driven
+  let cPrev = null;
+  // the map turned with two fingers, or along the way I drive («Marcha») with north wherever it falls
+  const canRot = !!(map.setBearing && map._rotate);
+  const bear = () => (canRot ? map.getBearing() : 0);
+  let up = canRot && localStorage.getItem("rally.up") !== "0", selfRot = false, handRot = 0, lastUser = 0;
+  const setB = (b) => { if (!canRot) return; const d = Math.abs(((b - bear()) % 360 + 540) % 360 - 180); if (d < 2) return; selfRot = true; map.setBearing(b); selfRot = false; };
   let keepUntil = 0; // an important message stays a few seconds before the accuracy readout replaces it
   const msg = (t, sticky) => { if (!sticky && Date.now() < keepUntil) return; $("gpsMsg").textContent = t || ""; if (sticky) keepUntil = Date.now() + 10000; };
 
@@ -73,17 +80,35 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
       dot = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).bindTooltip("Estás aquí · tócame para medir desde aquí").addTo(layer);
       dot.on("click", (e) => { L.DomEvent.stopPropagation(e); measureHere(); });
     } else { dot.setLatLng(ll); ring.setLatLng(ll).setRadius(acc); }
-    const hd = p.coords.heading;
-    if (hd !== null && hd !== undefined && !Number.isNaN(hd) && (p.coords.speed || 0) > 1) {
+    if (course !== undefined) {
       const icon = L.divIcon({ className: "gps-head", iconSize: [34, 34], iconAnchor: [17, 17],
-        html: `<svg viewBox="0 0 34 34" style="transform:rotate(${Math.round(hd)}deg)"><path d="M17 2 L23 14 L17 11 L11 14 Z" fill="#1a73e8" stroke="#fff" stroke-width="1.5"/></svg>` });
-      if (!head) head = L.marker(ll, { icon, interactive: false, keyboard: false }).addTo(layer); else head.setLatLng(ll).setIcon(icon);
+        html: `<svg viewBox="0 0 34 34" style="transform:rotate(${Math.round(course)}deg)"><path d="M17 2 L23 14 L17 11 L11 14 Z" fill="#1a73e8" stroke="#fff" stroke-width="1.5"/></svg>` });
+      if (!head) head = L.marker(ll, { icon, rotateWithView: true, interactive: false, keyboard: false }).addTo(layer); else head.setLatLng(ll).setIcon(icon);
     } else if (head) { layer.removeLayer(head); head = null; }
-    if (follow) { map.setView(ll, zoomIn ? Math.max(map.getZoom(), CLOSE) : map.getZoom(), { animate: true }); zoomIn = false; }
+    if (follow) center(ll);
+  }
+  // the map goes where I am; along the way, with me low on the screen so more of the road ahead shows
+  function center(ll) {
+    const z = zoomIn ? Math.max(map.getZoom(), CLOSE) : map.getZoom(); zoomIn = false;
+    if (up && course !== undefined && Date.now() - handRot > 8000) setB(360 - course);
+    let c = L.latLng(ll);
+    if (canRot && up && course !== undefined) {
+      const px = map.project(c, z), b = -bear() * rad, k = map.getSize().y * 0.22;
+      c = map.unproject(px.add([Math.sin(b) * k, -Math.cos(b) * k]), z);
+    }
+    map.setView(c, z, { animate: true });
   }
 
   function onPos(p) {
-    last = p; draw(p); onMove(p.coords.latitude, p.coords.longitude); checkRoute(p); checkNav(p);
+    last = p;
+    const here = [p.coords.latitude, p.coords.longitude], hd = p.coords.heading;
+    if (p.coords.accuracy <= MAX_ACC) {
+      if (!cPrev) cPrev = here;
+      else if (meters(cPrev, here) >= 5) { course = brg(cPrev, here); cPrev = here; }
+      if (hd !== null && hd !== undefined && !Number.isNaN(hd) && (p.coords.speed || 0) > 1) course = hd;
+    }
+    draw(p);
+    if (offOn() && !offLooked) applyOff(false); onMove(p.coords.latitude, p.coords.longitude); checkRoute(p); checkNav(p);
     const speed = p.coords.speed ? ` · ${Math.round(p.coords.speed * 3.6)} km/h` : "";
     msg(`Precisión ±${Math.round(p.coords.accuracy)} m${speed}`);
     if (rec && p.coords.accuracy <= MAX_ACC) {
@@ -113,7 +138,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
   function stopWatch() {
     if (watch !== null) navigator.geolocation.clearWatch(watch);
-    watch = null; layer.clearLayers(); dot = ring = head = null; ui();
+    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; ui();
   }
 
   function drawRec() {
@@ -154,16 +179,20 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     idb.del("kv", "rec").catch(() => {});
     recLayer.clearLayers(); ui();
     if (!r.segs.some((s) => s.length > 1)) { msg("La grabación no tenía recorrido: no se ha guardado.", true); return; }
+    if (offOn()) { await keep(r); msg("Ruta guardada en el móvil. Se subirá cuando quites «Trabajar sin conexión» y haya internet.", true); return; }
     try { const row = await upload(r); msg(`Ruta guardada en la etapa ${r.stage} («Rutas grabadas»): ${row.meta.km.toFixed(2)} km en ${fmtTime(row.meta.secs)}.`, true); onSaved(); }
     catch (e) {
       // no connection: kept on the phone and sent as soon as there is internet
-      let pend = []; try { pend = (await idb.get("kv", "recPending")) || []; } catch (er) {}
-      pend.push(r); idb.put("kv", pend, "recPending").catch(() => {});
+      await keep(r);
       msg(navigator.onLine ? "No se pudo guardar: " + writeErr(e) + " Queda en el móvil y lo intento de nuevo luego." : "Sin conexión: la ruta queda guardada en el móvil y se subirá cuando haya internet.", true);
     }
   }
+  async function keep(r) {
+    let pend = []; try { pend = (await idb.get("kv", "recPending")) || []; } catch (er) {}
+    pend.push(r); await idb.put("kv", pend, "recPending").catch(() => {});
+  }
   async function sendPending() {
-    if (pendingTry || !navigator.onLine) return; pendingTry = true;
+    if (pendingTry || !navigator.onLine || offOn()) return; pendingTry = true;
     try {
       let pend = (await idb.get("kv", "recPending")) || [];
       if (pend.length) {
@@ -184,6 +213,34 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     else { follow = false; ui(); }
   };
   map.on("dragstart", () => { if (watch !== null && follow) { follow = false; ui(); } });
+  // after a few seconds without touching the map it goes back to my arrow, and turns along the way again
+  const touched = () => { lastUser = Date.now(); };
+  ["pointerdown", "touchstart", "wheel"].forEach((ev) => map.getContainer().addEventListener(ev, touched, { passive: true }));
+  map.on("drag", touched);
+  map.on("rotate", () => { compass(); if (!selfRot) { handRot = Date.now(); touched(); } });
+  setInterval(() => {
+    if (watch === null || follow || !last || Date.now() - lastUser < 8000) return;
+    if (busy && busy()) return;
+    follow = true; draw(last); ui();
+  }, 2000);
+  const Compass = L.Control.extend({ options: { position: "topleft" }, onAdd() {
+    const b = L.DomUtil.create("button", "compass-ctl"); b.type = "button"; b.id = "compassBtn";
+    L.DomEvent.disableClickPropagation(b);
+    b.onclick = () => {
+      up = !up; try { localStorage.setItem("rally.up", up ? "1" : "0"); } catch (e) {}
+      handRot = 0;
+      if (!up) setB(0); else if (last && watch !== null) { follow = true; draw(last); ui(); }
+      compass();
+    };
+    return b;
+  } });
+  const compass = () => {
+    const b = $("compassBtn"); if (!b) return;
+    b.innerHTML = `<svg viewBox="0 0 24 24" style="transform:rotate(${Math.round(bear())}deg)"><path d="M12 2 L16 12 L8 12 Z" fill="#c62828"/><path d="M12 22 L16 12 L8 12 Z" fill="#9aa3ad"/></svg><span>${up ? "Marcha" : "Norte"}</span>`;
+    b.title = up ? "El mapa gira con el sentido de la marcha. Toca para poner el norte arriba." : "Norte arriba (gira con dos dedos). Toca para que el mapa gire con la marcha.";
+    b.classList.toggle("on", up);
+  };
+  if (canRot) { new Compass().addTo(map); compass(); }
   /* ---------- following a route: a warning when I leave it by more than the metres chosen ---------- */
   let fol = null; // { route, thr, off, quiet, lastWarn, ownRec }
   const folLayer = L.layerGroup().addTo(map);
@@ -231,14 +288,10 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   function checkNav(p) {
     if (!fol || p.coords.accuracy > MAX_ACC) return;
     const here = [p.coords.latitude, p.coords.longitude], spd = p.coords.speed || 0;
-    // course: the GPS's own when moving, else from the last few metres driven
-    if (!fol.prev) fol.prev = here;
-    else if (meters(fol.prev, here) >= 5) { fol.course = brg(fol.prev, here); fol.prev = here; }
-    const hd = p.coords.heading;
-    if (hd !== null && hd !== undefined && !Number.isNaN(hd) && spd > 1) fol.course = hd;
+    fol.course = course;
     hdg.hidden = false;
     hdg.innerHTML = fol.course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
-      : `<b>Rumbo</b>${arrowSvg(fol.course, "#1a73e8")}<span class="big">${String(Math.round(fol.course) % 360).padStart(3, "0")}°</span><small>${card(fol.course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
+      : `<b>Rumbo</b>${arrowSvg(fol.course + bear(), "#1a73e8")}<span class="big">${String(Math.round(fol.course) % 360).padStart(3, "0")}°</span><small>${card(fol.course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
     // the nearest waypoint of the stage not taken yet
     let best = null;
     for (const w of waypoints()) {
@@ -255,9 +308,9 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
       return;
     }
     if (fol.warned !== w.id) { fol.warned = w.id; beep(3, 140, 880); try { navigator.vibrate && navigator.vibrate([150, 80, 150]); } catch (e) {} }
-    // the map is north up, so the arrow points straight at the waypoint on screen
+    // turned by the map's own rotation, so the arrow points straight at the waypoint on screen
     wpb.hidden = false;
-    wpb.innerHTML = `${arrowSvg(b, "#c62828")}<div><b>WP ${w.name}${w.pts ? " · " + w.pts + " pts" : ""}</b><span class="big">${Math.round(best.d)} m</span><small>rumbo ${String(Math.round(b) % 360).padStart(3, "0")}° ${card(b)}</small></div>`;
+    wpb.innerHTML = `${arrowSvg(b + bear(), "#c62828")}<div><b>WP ${w.name}${w.pts ? " · " + w.pts + " pts" : ""}</b><span class="big">${Math.round(best.d)} m</span><small>rumbo ${String(Math.round(b) % 360).padStart(3, "0")}° ${card(b)}</small></div>`;
   }
   function startFollow() {
     const r = routes().find((x) => x.key === $("followSel").value);
@@ -293,8 +346,24 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     rec = null; clearInterval(startRec.t); idb.del("kv", "rec").catch(() => {}); recLayer.clearLayers(); msg("Grabación descartada.", true); ui();
   };
 
+  /* ---------- working without a connection: only the maps kept on this device, no data spent ---------- */
+  const offOn = () => $("offMode").checked;
+  let offLooked = false; // the map of the zone is looked for again with the first position
+  async function applyOff(tell) {
+    const on = offOn(); offLooked = !!last;
+    try { localStorage.setItem("rally.off", on ? "1" : "0"); } catch (e) {}
+    if (layers) layers.setOffline(on);
+    if (!on) { if (tell) msg("Con conexión: el mapa vuelve a cargar de internet y las rutas guardadas en el móvil se suben.", true); sendPending(); return; }
+    const at = last ? [last.coords.latitude, last.coords.longitude] : [map.getCenter().lat, map.getCenter().lng];
+    const t = layers ? await layers.coverHere(at) : "";
+    if (tell || /no tienes/.test(t)) msg(t, true);
+  }
+  $("offMode").checked = localStorage.getItem("rally.off") === "1";
+  $("offMode").onchange = () => applyOff(true);
+
   // a recording interrupted by a reload carries on
   idb.get("kv", "rec").then((r) => { if (r && r.segs && !rec) { rec = r; startRec(true); msg("He recuperado la grabación que estaba en marcha. Sigue grabando.", true); } }).catch(() => {});
+  applyOff(false);
   sendPending();
   ui();
 }

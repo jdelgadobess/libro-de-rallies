@@ -395,7 +395,7 @@ function drawArrows() {
         for (let d = left; d <= len; d += STEP) {
           const at = lmap.layerPointToLatLng(L.point(prev.x + (cur.x - prev.x) * d / len, prev.y + (cur.y - prev.y) * d / len));
           if (!view.contains(at)) continue;
-          L.marker(at, { pane: "arrows", interactive: false, keyboard: false, icon: L.divIcon({ className: "dir-arrow", iconSize: [14, 14], iconAnchor: [7, 7],
+          L.marker(at, { pane: "arrows", rotateWithView: true, interactive: false, keyboard: false, icon: L.divIcon({ className: "dir-arrow", iconSize: [14, 14], iconAnchor: [7, 7],
             html: `<svg viewBox="0 0 14 14" style="transform:rotate(${ang.toFixed(0)}deg)"><path d="M4 2.5 L10 7 L4 11.5" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/><path d="M4 2.5 L10 7 L4 11.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
         }
         left = ((left - len) % STEP + STEP) % STEP;
@@ -426,9 +426,10 @@ const fmtKm = (d) => d < 1 ? Math.round(d * 1000) + " m" : d.toLocaleString("es"
 function loadMaps() {
   if (lmap) return;
   if (!window.L) { $("gmap").innerHTML = '<p class="hint" style="padding:16px">No se pudo cargar el mapa.</p>'; return; }
-  lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6 });
-  setupLayers(lmap);
-  setupGps({ map: lmap, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
+  // two fingers turn the map (leaflet-rotate); the compass button puts north back up or the map along the way I drive
+  lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, rotateControl: false });
+  const layersCtl = setupLayers(lmap);
+  setupGps({ map: lmap, layers: layersCtl, busy: () => !!adding, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
     onMeasure: gpsMeasure, routes: followRoutes, waypoints: () => rallyWps().filter((w) => stageKey(w) === ($("recStage").value || (state.stageFilter !== "all" ? state.stageFilter : ""))), onMove: (lat, lon) => {
       // measuring from where I am: the start follows the GPS, redrawn every few seconds
       const g = measure[0]; if (!g || !g.gps) return;
@@ -436,7 +437,7 @@ function loadMaps() {
       if (Date.now() - (g.drawn || 0) > 3000) { g.drawn = Date.now(); renderMap(); }
     } });
   layer = L.layerGroup().addTo(lmap);
-  lmap.createPane("arrows").style.zIndex = 450;
+  lmap.createPane("arrows", lmap._norotatePane).style.zIndex = 450;
   arrowLayer = L.layerGroup().addTo(lmap);
   lmap.on("zoomend moveend", drawArrows);
   // big buttons on the map while measuring: go back one point, or start from scratch

@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="config.js"></script>
 </head>
 <body>
@@ -145,7 +146,7 @@
         <div class="drop" id="orDrop" style="margin-top:12px">
           <label class="import map off" for="orFile">Importar mapa off-road (Marruecos o España)</label>
           <input type="file" id="orFile" class="vh mapfile" accept=".pmtiles" multiple>
-          <span>Pistas, caminos, senderos, ríos secos y pueblos de OpenStreetMap: los mismos datos que usa OsmAnd. Descarga el que necesites una vez: <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles">Marruecos (270 MB)</a> o <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-espana/espana.pmtiles">España, península y Baleares (1,7 GB)</a>, e impórtalo con el botón. Puedes tener los dos. Se guardan en este dispositivo y funcionan sin internet.</span>
+          <span>Pistas, caminos, senderos, ríos secos y pueblos de OpenStreetMap: los mismos datos que usa OsmAnd. Descarga el que necesites una vez: <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles">Marruecos (270 MB)</a> o <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-espana/espana.pmtiles">España, península y Baleares (1,7 GB)</a>, e impórtalo con el botón. Puedes tener los dos. Para ver el relieve, importa también las curvas de nivel: <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/curvas-marruecos/curvas-marruecos.pmtiles">curvas de Marruecos</a> o <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/curvas-espana/curvas-espana.pmtiles">curvas de España</a>. Se guardan en este dispositivo y funcionan sin internet.</span>
         </div>
         <p class="msg" id="mapImpMsg"></p>
 
@@ -256,6 +257,7 @@
         <div class="gpsbar followbar">
           <label>Seguir ruta <select id="followSel" aria-label="Ruta a seguir"></select></label>
           <label>Avisar si me desvío más de <input id="followM" type="number" inputmode="numeric" min="10" step="10" value="50"> m</label>
+          <label class="chk" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"> 📴 Trabajar sin conexión</label>
           <button type="button" class="hl" id="followBtn">▶ Iniciar ruta</button>
           <span class="rec" id="followInfo"></span>
         </div>

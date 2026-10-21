@@ -32,6 +32,7 @@ export const idb = {
   async del(store, key) { const d = await idbOpen(); return req(d.transaction(store, "readwrite").objectStore(store).delete(key)); },
 };
 
+const mbTxt = (b) => { const mb = b / 1048576; return mb >= 1000 ? (mb / 1024).toLocaleString("es", { maximumFractionDigits: 1 }) + " GB" : Math.round(mb) + " MB"; };
 // a map downloaded from the program is kept in pieces; put together they read as one file
 const partKey = (m, i) => `mp|${m.id}|${i}`;
 async function blobOf(m) {
@@ -274,10 +275,10 @@ export function setupLayers(lmap) {
       box.append(p);
     }
     offerDownloads(maps);
-    if (maps.length) { const t = document.createElement("span"); t.textContent = "Mapas guardados en este dispositivo:"; box.append(t); }
+    if (maps.length) { const t = document.createElement("span"); t.className = "lysub"; t.textContent = "Mapas guardados en este dispositivo"; box.append(t); }
     maps.sort((a, b) => a.name.localeCompare(b.name)).forEach((m) => {
-      const l = document.createElement("label"); l.className = "chk";
-      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = pref.on.includes(m.id);
+      const l = document.createElement("label"); l.className = "mapcard";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "sw"; cb.checked = pref.on.includes(m.id);
       cb.onchange = async () => {
         pref.on = pref.on.filter((x) => x !== m.id); if (cb.checked) pref.on.push(m.id); save();
         if (cb.checked) { try { await turnOn(m, true); satOff(); } catch (e) { cb.checked = false; pref.on = pref.on.filter((x) => x !== m.id); save(); msg(`${m.name}: ${e.message}`); } }
@@ -289,7 +290,9 @@ export function setupLayers(lmap) {
         if (!confirm(`¿Quitar «${m.name}» de este dispositivo?`)) return;
         turnOff(m.id); pref.on = pref.on.filter((x) => x !== m.id); save(); await dropMap(m); list(); msg("");
       };
-      l.append(cb, ` ${m.name} (${(m.size / 1048576).toFixed(0)} MB)`, rm); box.append(l);
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = m.name;
+      const sz = document.createElement("small"); sz.textContent = mbTxt(m.size); nm.append(sz);
+      l.append(cb, nm, rm); box.append(l);
     });
     for (const m of maps) if (pref.on.includes(m.id)) { try { await turnOn(m, false); } catch (e) { msg(`${m.name}: ${e.message}`); } }
   }
@@ -301,17 +304,17 @@ export function setupLayers(lmap) {
     box.textContent = "";
     const missing = catalog.filter((c) => !maps.some((m) => m.file === c.file && (m.blob || m.done)));
     if (!missing.length) return;
-    const t = document.createElement("span"); t.textContent = "Descargar en este dispositivo:"; box.append(t);
+    const t = document.createElement("span"); t.className = "lysub"; t.textContent = "Descargar en este dispositivo (con wifi)"; box.append(t);
     if (missing.length > 1) {
       const all = document.createElement("button"); all.type = "button"; all.className = "hl dl"; all.disabled = !!downloading;
-      all.textContent = `⬇ Todo (${(missing.reduce((t, c) => t + c.size, 0) / 1073741824).toLocaleString("es", { maximumFractionDigits: 1 })} GB)`;
+      all.innerHTML = `<b>⬇</b><span class="nm">Todo<small>${mbTxt(missing.reduce((t, c) => t + c.size, 0))}</small></span>`;
       all.onclick = async () => { for (const c of missing) { if (!(await download(c))) return; } msg("Todos los mapas y curvas están en este dispositivo: funcionan sin internet."); };
       box.append(all);
     }
     missing.forEach((c) => {
       const b = document.createElement("button"); b.type = "button"; b.className = "ghost dl";
-      const mb = c.size / 1048576;
-      b.textContent = `⬇ ${c.name} (${mb >= 1000 ? (mb / 1024).toLocaleString("es", { maximumFractionDigits: 1 }) + " GB" : Math.round(mb) + " MB"})`;
+      b.innerHTML = `<b>⬇</b><span class="nm"></span>`; b.querySelector(".nm").textContent = c.name;
+      const sz = document.createElement("small"); sz.textContent = mbTxt(c.size); b.querySelector(".nm").append(sz);
       b.disabled = !!downloading;
       b.onclick = () => download(c);
       box.append(b);
@@ -386,7 +389,7 @@ export function setupLayers(lmap) {
   // turns on the off-road map kept here that covers where I am
   async function coverHere(at) {
     let o = null; try { o = await offroadMap(at); } catch (e) {}
-    if (!o) return "Sin conexión, pero no tienes guardado el mapa de esta zona: con internet, impórtalo en el paso 3 («Importar mapa off-road»). Solo verás lo que ya hayas visto antes.";
+    if (!o) return "Sin conexión, pero no tienes guardado el mapa de esta zona: con internet, descárgalo en este menú, en «Mapas». Solo verás lo que ya hayas visto antes.";
     if (!pref.on.includes(o.id)) { pref.on.push(o.id); save(); await list(); }
     return `Sin conexión: uso el mapa «${o.name}» guardado en el dispositivo y el satélite que ya hayas visto antes.`;
   }

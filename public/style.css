@@ -379,3 +379,44 @@ body:not(.tab-rec) #recTab { display: none }
 .layersbar #lyDl { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center }
 .layersbar button.dl { padding: 5px 10px; font-size: .82rem }
 .offbadge { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 800; background: #222; color: #fff; padding: 4px 10px; border-radius: 12px; font: 600 .8rem var(--sans, system-ui); pointer-events: none; opacity: .85 }
+
+/* ---------- finishing touches ---------- */
+button, a.btn, input, select, textarea, label.import, .mecadd label.btn, .layersbar label.btn { border-radius: 6px }
+.drop, .car, #carForm, .alts li { border-radius: 10px }
+section.panel, .mapbox, .tablebox, .review { border-radius: 10px }
+button, a.btn { transition: filter .15s, border-color .15s, background-color .15s, box-shadow .15s }
+button:not(.ghost):not(.warn):not(:disabled):hover, a.btn:not(.ghost):hover { filter: brightness(1.08); box-shadow: 0 2px 8px rgba(40, 20, 5, .18) }
+button:active:not(:disabled) { transform: translateY(1px) }
+input[type=checkbox] { accent-color: var(--red) }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 1px }
+.msg:empty, .thumbs:empty { display: none }
+.btns:not(:has(> :not([hidden]))) { display: none }
+
+/* the map menu in groups, each with its small title */
+.mapmenu > [data-title] { padding-top: 10px; padding-bottom: 10px }
+.mapmenu > [data-title]::before { content: attr(data-title); flex-basis: 100%; font: 600 .66rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px }
+.mapmenu .ver { margin-left: auto; font-family: var(--mono); font-size: .7rem; opacity: .7 }
+
+/* on/off switches */
+input.sw { appearance: none; -webkit-appearance: none; width: 38px; height: 22px; flex: 0 0 38px; border-radius: 999px; background: var(--line); border: 0; padding: 0; position: relative; cursor: pointer; transition: background-color .2s; margin: 0 }
+input.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s }
+input.sw:checked { background: var(--green) }
+input.sw:checked::after { transform: translateX(16px) }
+.followbar input.sw { width: 38px }
+
+/* saved maps and maps to download, as tidy cards */
+.layersbar #lyFiles, .layersbar #lyDl { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; align-items: stretch }
+.layersbar #lyFiles:empty, .layersbar #lyDl:empty { display: none }
+.layersbar .lysub { flex-basis: 100%; font-size: .78rem; font-weight: 600; color: var(--muted); margin-top: 4px }
+.layersbar #lyFiles > .msg { flex-basis: 100% }
+.layersbar label.mapcard { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet-solid); cursor: pointer; min-width: 190px; flex: 0 1 auto; transition: border-color .15s }
+.layersbar label.mapcard:has(input:checked) { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green) }
+.layersbar .nm { display: grid; line-height: 1.2; font-weight: 600; font-size: .85rem; color: var(--ink); text-align: left; flex: 1 }
+.layersbar .nm small { font-weight: 400; font-size: .74rem; color: var(--muted); font-family: var(--mono) }
+.layersbar label.mapcard button.x { border: 0; background: transparent; color: var(--muted); font-size: .9rem; padding: 2px 6px; margin-left: 4px }
+.layersbar label.mapcard button.x:hover { color: var(--danger) }
+.layersbar button.dl { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; border-style: dashed; min-width: 190px }
+.layersbar button.dl b { font-size: 1.05rem; color: var(--blue) }
+.layersbar button.dl.hl { border-style: solid }
+.layersbar button.dl.hl b, .layersbar button.dl.hl .nm, .layersbar button.dl.hl small { color: #fff }
+.followbar label { text-transform: none; letter-spacing: 0; white-space: nowrap; color: var(--ink) }

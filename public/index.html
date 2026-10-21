@@ -146,7 +146,7 @@
         <div class="drop" id="orDrop" style="margin-top:12px">
           <label class="import map off" for="orFile">Importar mapa off-road (Marruecos o España)</label>
           <input type="file" id="orFile" class="vh mapfile" accept=".pmtiles" multiple>
-          <span>Pistas, caminos, senderos, ríos secos y pueblos de OpenStreetMap: los mismos datos que usa OsmAnd. Descarga el que necesites una vez: <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-marruecos/marruecos.pmtiles">Marruecos (270 MB)</a> o <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/mapa-espana/espana.pmtiles">España, península y Baleares (1,7 GB)</a>, e impórtalo con el botón. Puedes tener los dos. Para ver el relieve, importa también las curvas de nivel: <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/curvas-marruecos/curvas-marruecos.pmtiles">curvas de Marruecos (215 MB)</a> o <a href="https://github.com/jdelgadobess/libro-de-rallies/releases/download/curvas-espana/curvas-espana.pmtiles">curvas de España (320 MB)</a>. Se guardan en este dispositivo y funcionan sin internet.</span>
+          <span>Pistas, caminos y pueblos de OpenStreetMap (como OsmAnd) y curvas de nivel, para usar sin internet. Lo más fácil es descargarlos desde el menú del mapa, en «Mapas» › «Descargar en este dispositivo». Si ya tienes el archivo .pmtiles, impórtalo aquí.</span>
         </div>
         <p class="msg" id="mapImpMsg"></p>
 
@@ -226,7 +226,7 @@
           </span>
         </div>
         <div class="mapmenu" id="mapMenu">
-        <div class="drawbar" data-edit>
+        <div class="drawbar" data-edit data-title="Dibujar en el mapa">
           <button type="button" class="ghost" id="drawStart">Dibujar ruta</button>
           <button type="button" class="ghost" id="addStart">📍 Crear waypoints en el mapa</button>
           <span id="addTools" hidden>
@@ -245,7 +245,7 @@
           <span class="hint" id="drawInfo"></span>
           <span class="msg" id="drawMsg"></span>
         </div>
-        <div class="gpsbar">
+        <div class="gpsbar" data-title="GPS y grabación">
           <button type="button" class="ghost" id="gpsBtn">📍 Mi posición (GPS)</button>
           <button type="button" class="ghost" id="gpsMeasure" hidden>📏 Medir desde mi posición</button>
           <button type="button" class="ghost" id="recBtn" hidden>⏺ Grabar ruta</button>
@@ -254,10 +254,10 @@
           <span class="rec" id="recInfo"></span>
           <span class="msg" id="gpsMsg"></span>
         </div>
-        <div class="gpsbar followbar">
+        <div class="gpsbar followbar" data-title="Seguir una ruta">
           <label>Seguir ruta <select id="followSel" aria-label="Ruta a seguir"></select></label>
           <label>Avisar si me desvío más de <input id="followM" type="number" inputmode="numeric" min="10" step="10" value="50"> m</label>
-          <label class="chk" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"> 📴 Trabajar sin conexión</label>
+          <label class="chk" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" class="sw" id="offMode"> 📴 Trabajar sin conexión</label>
           <button type="button" class="hl" id="followBtn">▶ Iniciar ruta</button>
           <span class="rec" id="followInfo"></span>
         </div>
@@ -265,14 +265,14 @@
           <summary id="recSum">Rutas grabadas</summary>
           <ul class="tracks" id="recList"></ul>
         </details>
-        <div class="layersbar">
+        <div class="layersbar" data-title="Mapas">
           <label>Caminos <select id="lyBase"><option value="osm">OpenStreetMap</option><option value="topo">Topográfico</option><option value="none">Ninguno</option></select></label>
-          <label class="chk"><input type="checkbox" id="lySat" checked> Satélite</label>
+          <label class="chk"><input type="checkbox" class="sw" id="lySat" checked> Satélite</label>
           <label class="op">Opacidad <input type="range" id="lyOp" min="0" max="100" step="5" value="100"> <span id="lyOpTxt">100 %</span></label>
           <span id="lyFiles"></span>
           <span id="lyDl"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg">Versión 53</span>
+          <span class="msg ver">Versión 54</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>

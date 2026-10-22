@@ -548,3 +548,8 @@ body:not(.tab-plan) #mapTitle { display: none }
 #stageBox input.big { width: 4em }
 #stageDel { display: none !important }
 .tab-plan #trkBox { display: none !important }
+.altbar #altBtns { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.altbtn { --c: #888; display: inline-flex; align-items: center; gap: 6px; background: transparent; color: inherit; border: 2px solid var(--c); border-radius: 999px; padding: 4px 12px; font-weight: 600; cursor: pointer }
+.altbtn .sw { width: 18px; height: 5px; border-radius: 3px; background: var(--c) }
+.altbtn.on { background: var(--c); color: #fff }
+.altbtn.on .sw { background: #fff }

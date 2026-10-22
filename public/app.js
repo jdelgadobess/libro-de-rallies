@@ -82,6 +82,9 @@ const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id ===
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
 // on the map every route is yellow and every waypoint green, so the two never get mixed up
 const TRACK = "#ffd600", WPC = "#1e9e3e";
+// each route proposal gets its own colour so they can be told apart on the map
+const ALT_COLS = ["#e53935", "#1e88e5", "#8e24aa", "#fb8c00", "#00897b", "#d81b60", "#6d4c41", "#3949ab"];
+const altCol = (i) => ALT_COLS[i % ALT_COLS.length];
 const stageColor = (s) => PALETTE[(allStages().indexOf(s) + PALETTE.length) % PALETTE.length];
 // roadbook order: DSS first, then by the number in the name (WP2 before WP10), ASS last; ties by reading order
 // start and finish of the stage, by name ("DSS", "SALIDA") or by description ("ST6 SALIDA", "ST LLEGADA")
@@ -596,9 +599,9 @@ function renderMap() {
   if (plan.stage === state.stageFilter) plan.alts.forEach((a, i) => {
     const on = plan.sel === i;
     if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(a.pts, { color: TRACK, weight: on ? 5 : 3, opacity: on ? 1 : .7, dashArray: on ? null : "6 6" })
-      .bindTooltip(a.name).on("click", () => { plan.sel = i; renderPlan(); renderMap(); }).addTo(layer);
-    if (on) arrow(a.pts, TRACK);
+    L.polyline(a.pts, { color: altCol(i), weight: on ? 5 : 3, opacity: on ? 1 : .75, dashArray: on ? null : "6 6" })
+      .bindTooltip(`Propuesta ${i + 1}: ${a.name}`).on("click", () => pickAlt(i)).addTo(layer);
+    if (on) arrow(a.pts, altCol(i));
     // stretches with no way on the map: drawn as a dotted line so they are not taken for a track
     if (on) (a.sat || []).forEach(({ line, note }) => {
       L.polyline(line, { color: "#fff", weight: 2, dashArray: "8 6", opacity: 1 }).bindTooltip("Pista vista en el satélite (no está en el mapa)" + (note ? ": " + note : "")).addTo(layer);
@@ -1226,8 +1229,8 @@ function renderPlan() {
   plan.alts.forEach((a, i) => {
     const li = document.createElement("li"); li.className = plan.sel === i ? "on" : "";
     const t = document.createElement("div"); t.className = "t";
-    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
-    t.append(sw, a.name);
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = altCol(i);
+    t.append(sw, `Propuesta ${i + 1}: ${a.name}`);
     const d = document.createElement("div"); d.className = "d";
     d.textContent = `${a.km.toFixed(1)} km · ${a.wps.length} de ${a.of} WP` + (a.extra > 0 ? ` (${a.extra} más porque la ruta pasa al lado)` : "") + (a.sum ? ` · ${a.sum} pts` : "") + ` · ${a.offKm.toFixed(1)} km fuera de pista` +
       (a.satKm ? ` · ${a.satKm.toFixed(1)} km por pistas vistas en el satélite` : "") +
@@ -1243,9 +1246,48 @@ function renderPlan() {
     };
     if (canEdit()) b.append(sv); b.append(gx);
     li.append(t, d, d2, b);
-    li.onclick = () => { plan.sel = i; renderPlan(); renderMap(); if (lmap) lmap.fitBounds(a.pts, { padding: [30, 30] }); };
+    li.onclick = () => pickAlt(i);
     ul.append(li);
   });
+  renderAltBar();
+}
+// the proposals as coloured buttons above the map: tap one to see it, tap it again to confirm it
+let altArmed = null;
+function pickAlt(i) {
+  plan.sel = i; altArmed = i; $("altMsg").textContent = "";
+  renderPlan(); renderMap();
+  if (lmap && plan.alts[i]) lmap.fitBounds(plan.alts[i].pts, { padding: [30, 30] });
+}
+function renderAltBar() {
+  const box = $("altBtns"); box.textContent = "";
+  if (!plan.alts.length) {
+    const h = document.createElement("span"); h.className = "hint";
+    h.textContent = state.stageFilter === "all" ? "Elige la etapa para ver sus propuestas de ruta." : "Aún no hay propuestas: pulsa «Proponer ruta» más abajo.";
+    box.append(h); return;
+  }
+  plan.alts.forEach((a, i) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "altbtn" + (plan.sel === i ? " on" : "");
+    b.style.setProperty("--c", altCol(i));
+    const sw = document.createElement("span"); sw.className = "sw";
+    b.append(sw, `${i + 1}. ${a.name} · ${a.km.toFixed(1)} km`);
+    b.title = a.wps.map((w) => w.name).join(" → ");
+    b.onclick = () => (plan.sel === i && altArmed === i ? confirmAlt(i) : pickAlt(i));
+    box.append(b);
+  });
+  if (plan.sel !== null && altArmed === plan.sel && canEdit()) {
+    const c = document.createElement("button"); c.type = "button"; c.className = "hl"; c.id = "altOk";
+    c.textContent = `✓ Confirmar la propuesta ${plan.sel + 1}`;
+    c.onclick = () => confirmAlt(plan.sel);
+    box.append(c);
+  }
+}
+async function confirmAlt(i) {
+  const a = plan.alts[i]; if (!a || !canEdit()) return;
+  if (!confirm(`¿Confirmas la propuesta ${i + 1} (${a.name}, ${a.km.toFixed(1)} km) como la ruta de la etapa ${state.stageFilter}?`)) return;
+  altArmed = null;
+  const ok = await saveTrack(`Ruta elegida (propuesta ${i + 1}: ${a.name}) · Etapa ${state.stageFilter}`, [a.pts], $("altMsg"), a.wps);
+  if (ok) $("altMsg").textContent += " La tienes en «Seguir ruta» del Libro de ruta.";
+  renderAltBar();
 }
 $("pRun").onclick = async () => {
   const msg = $("pMsg"), share = Math.min(100, Math.max(10, parseInt($("pPct").value, 10) || 70)) / 100;

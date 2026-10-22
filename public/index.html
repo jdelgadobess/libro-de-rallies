@@ -112,6 +112,22 @@
         </div>
       </section>
 
+      <section class="panel" id="newStage" data-plan data-edit>
+        <h2>Crear etapa</h2>
+        <form id="nsForm">
+          <div class="row2">
+            <label>Nº de etapa <input id="nsNo" type="number" inputmode="numeric" min="0" max="30" required></label>
+            <fieldset class="kind"><legend>Tipo</legend>
+              <label><input type="radio" name="nsKind" value="caza" checked> Caza</label>
+              <label><input type="radio" name="nsKind" value="seguimiento"> Seguimiento</label>
+            </fieldset>
+          </div>
+          <div class="btns"><button type="submit" class="hl">Crear etapa y poner waypoints</button></div>
+          <p class="hint">Después toca el mapa donde va cada waypoint y pon su número y su puntuación.</p>
+          <p class="msg" id="nsMsg"></p>
+        </form>
+      </section>
+
       <section class="panel" id="moreWays" data-plan data-edit>
         <h2 id="wpTitle">Waypoint a mano</h2>
         <form id="wpForm">
@@ -229,7 +245,7 @@
         <div class="mapmenu" id="mapMenu">
         <div class="drawbar" data-edit data-plan data-title="Crear waypoints y rutas">
           <button type="button" class="ghost" id="drawStart">✏️ Dibujar mi ruta entre puntos</button>
-          <button type="button" class="ghost" id="addStart">📍 Crear waypoints en el mapa</button>
+          <button type="button" class="ghost" id="addStart">📍 Poner waypoints en el mapa</button>
           <span id="addTools" hidden>
             <button type="button" class="ghost" id="addEdit" disabled>✎ Editar el último</button>
             <button type="button" class="ghost" id="addUndo" disabled>↶ Borrar el último</button>
@@ -246,7 +262,7 @@
           <span class="hint" id="drawInfo"></span>
           <span class="msg" id="drawMsg"></span>
         </div>
-        <div class="gpsbar" data-title="GPS y grabación">
+        <div class="gpsbar" data-libro data-title="GPS y grabación">
           <button type="button" class="ghost" id="gpsBtn">📍 Mi posición (GPS)</button>
           <button type="button" class="ghost" id="gpsMeasure" hidden>📏 Medir desde mi posición</button>
           <button type="button" class="ghost" id="recBtn" hidden>⏺ Grabar ruta</button>
@@ -255,13 +271,13 @@
           <span class="rec" id="recInfo"></span>
           <span class="msg" id="gpsMsg"></span>
         </div>
-        <div class="gpsbar followbar" data-title="Seguir una ruta">
+        <div class="gpsbar followbar" data-libro data-title="Seguir una ruta">
           <label>Seguir ruta <select id="followSel" aria-label="Ruta a seguir"></select></label>
           <label>Avisar si me desvío más de <input id="followM" type="number" inputmode="numeric" min="10" step="10" value="50"> m</label>
           <button type="button" class="hl" id="followBtn">▶ Iniciar ruta</button>
           <span class="rec" id="followInfo"></span>
         </div>
-        <details class="recbox" id="recBox" hidden>
+        <details class="recbox" id="recBox" data-libro hidden>
           <summary id="recSum">Rutas grabadas</summary>
           <ul class="tracks" id="recList"></ul>
         </details>
@@ -275,7 +291,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 72</span>
+          <span class="msg ver">Versión 73</span>
         </div>
         </details>
         </div>

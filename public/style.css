@@ -526,3 +526,7 @@ body:not(.tab-plan) [data-plan] { display: none !important }
 .layersbox > summary small { font-weight: 400; color: var(--muted); font-size: .78rem }
 .layersbox > .layersbar { border-bottom: 0; padding-bottom: 10px }
 #planPanel label.chk { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0 } #planPanel label.chk input { width: auto }
+#newStage fieldset.kind { border: 0; padding: 0; margin: 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap }
+#newStage fieldset.kind legend { font: 600 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0; margin-bottom: 4px; width: 100% }
+#newStage fieldset.kind label { display: flex; gap: 6px; align-items: center; text-transform: none; letter-spacing: 0; font-size: .95rem }
+#newStage fieldset.kind input { width: auto }

@@ -884,16 +884,16 @@ $("stageDel").onclick = async () => {
 // recordings always go to a stage that already has waypoints: the one being viewed, or the one picked here
 function renderRecStage() {
   const sel = $("recStage"); if (!sel || sel.disabled) return;
-  const st = stagesOf(rallyWps()).filter((k) => k !== "");
-  const want = state.stageFilter !== "all" && st.includes(state.stageFilter) ? state.stageFilter : st.includes(sel.value) ? sel.value : st[0] || "";
+  // only the stage chosen in the Libro de ruta: everything about stages follows it
+  const k = state.stageFilter !== "all" && state.stageFilter !== "" ? state.stageFilter : "";
   sel.textContent = "";
-  if (!st.length) sel.append(new Option("Sin etapas con waypoints", ""));
-  st.forEach((k) => sel.append(new Option(`${stageLabel(k)} (${rallyWps().filter((w) => stageKey(w) === k).length} WP)`, k)));
-  sel.value = want;
+  sel.append(k ? new Option(`${stageLabel(k)} (${rallyWps().filter((w) => stageKey(w) === k).length} WP)`, k) : new Option("Elige la etapa", ""));
+  sel.value = k;
 }
 // the routes the GPS can follow in the stage being recorded: its tracks, the options drawn and the planner's proposals
 function followRoutes() {
-  const st = $("recStage").value || (state.stageFilter !== "all" ? state.stageFilter : "");
+  const st = state.stageFilter !== "all" ? state.stageFilter : null;
+  if (st === null || st === "") return [];
   const out = rallyTracks().filter((t) => stageKey(t) === st && t.kind !== "grabada").map((t) => ({ key: "t" + t.id, name: t.name, segs: t.segs }));
   if (plan.stage === st) plan.alts.forEach((a, i) => out.push({ key: "p" + i, name: `Propuesta ${i + 1}: ${a.name}`, segs: [a.pts] }));
   rallyTracks().filter((t) => stageKey(t) === st && t.kind === "grabada").forEach((t) => out.push({ key: "t" + t.id, name: "⏺ " + t.name, segs: t.segs }));
@@ -910,14 +910,14 @@ $("followSel").addEventListener("change", (e) => {
 function renderFollow() {
   const sel = $("followSel"); if (!sel || sel.disabled) return;
   const list = followRoutes(), was = sel.value; sel.textContent = "";
-  if (!list.length) sel.append(new Option("Esta etapa no tiene rutas", ""));
+  if (!list.length) sel.append(new Option(state.stageFilter === "all" ? "Elige la etapa" : "Esta etapa no tiene rutas", ""));
   list.forEach((r) => sel.append(new Option(r.name, r.key)));
   sel.value = list.some((r) => r.key === was) ? was : list.length ? list[0].key : "";
   $("followBtn").disabled = !list.length && !sel.disabled;
 }
 function renderRecorded() {
   renderRecStage(); renderFollow();
-  const list = rallyTracks().filter((t) => t.kind === "grabada").sort((a, b) => String(b.created).localeCompare(String(a.created)));
+  const list = rallyTracks().filter((t) => t.kind === "grabada" && state.stageFilter !== "all" && stageKey(t) === state.stageFilter).sort((a, b) => String(b.created).localeCompare(String(a.created)));
   $("recBox").hidden = !list.length;
   $("recSum").textContent = `Rutas grabadas (${list.length})`;
   const ul = $("recList"); ul.textContent = "";
@@ -926,7 +926,7 @@ function renderRecorded() {
     const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
     const m = t.meta || {}, secs = m.secs || 0;
     const nm = document.createElement("span"); nm.className = "em";
-    nm.textContent = `${t.name}${stageKey(t) ? " · " + stageLabel(stageKey(t)) : ""} · ${kmOf(t.segs).toFixed(1)} km` + (secs ? ` · ${Math.floor(secs / 3600)} h ${String(Math.floor(secs / 60) % 60).padStart(2, "0")} min` : "");
+    nm.textContent = `${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (secs ? ` · ${Math.floor(secs / 3600)} h ${String(Math.floor(secs / 60) % 60).padStart(2, "0")} min` : "");
     const see = document.createElement("button"); see.type = "button"; see.className = filt.rec === t.id ? "hl" : "ghost"; see.textContent = filt.rec === t.id ? "Ocultar" : "Ver en el mapa";
     see.onclick = () => {
       filt.rec = filt.rec === t.id ? null : t.id; filt.tracks = true; $("fTracks").checked = true;

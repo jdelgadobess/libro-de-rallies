@@ -65,7 +65,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     $("recBtn").hidden = !canEdit() || !!(fol && rec); // while following a route its own button ends it
     $("recDrop").hidden = !rec;
     $("gpsMeasure").hidden = watch === null;
-    $("recStage").hidden = !canEdit(); $("recStage").disabled = !!rec;
+    $("recStage").hidden = true; $("recStage").disabled = !!rec; // the stage is the one chosen in the Libro de ruta
     if (rec) $("recStage").value = rec.stage;
     if (rec) {
       const secs = ((rec.end || Date.now()) - rec.start) / 1000;
@@ -158,7 +158,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
 
   async function startRec(resumed) {
     if (!rallyId()) { msg("Elige primero el año en el paso 1.", true); return; }
-    if (!resumed && !stage()) { msg("Este año no tiene etapas con waypoints: importa primero los waypoints de la etapa y graba sobre ella.", true); return; }
+    if (!resumed && !stage()) { msg("Elige primero la etapa en el Libro de ruta: la ruta se graba en ella.", true); return; }
     if (!startWatch()) return;
     if (!resumed) rec = { start: Date.now(), segs: [], rally: rallyId(), stage: stage() };
     idb.put("kv", rec, "rec").catch(() => {});

@@ -538,3 +538,4 @@ body:not(.tab-plan) #mapTitle { display: none }
 .mapbox .boxhead .mapsel select { width: auto !important; min-width: 0; flex: 0 0 auto; max-width: 44vw }
 #earthBox { display: none !important }
 .mapsel label { display: flex; align-items: center; gap: 6px; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
+.mapsel #mDel { padding: 6px 12px; font-size: .85rem }

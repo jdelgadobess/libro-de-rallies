@@ -389,6 +389,25 @@ function renderPtsFilter() {
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
+// deletes the route picked in «Seguir ruta» (a track, a recording or a planner's proposal), after asking
+$("mDel").onclick = async () => {
+  const k = $("followSel").value, r = followRoutes().find((x) => x.key === k);
+  if (!r) { showNotice(state.stageFilter === "all" ? "Elige primero la etapa." : "Elige en «Seguir ruta» la ruta que quieres eliminar."); return; }
+  if (!confirm(`¿Seguro que quieres eliminar «${r.name}»? No se puede deshacer.`)) return;
+  try {
+    if (k[0] === "p") {
+      plan.alts.splice(+k.slice(1), 1); plan.sel = null;
+      if (plan.alts.length) await savePlan($("pMsg").textContent);
+      else { must(await sb.from("plans").delete().eq("rally_id", state.rallyId).eq("stage", state.stageFilter)); idb.del("kv", planKey()).catch(() => {}); }
+    } else {
+      const id = k.slice(1), t = state.tracks.find((x) => String(x.id) === id);
+      must(await sb.from("tracks").delete().eq("id", t ? t.id : id));
+      if (filt.rec != null && String(filt.rec) === id) filt.rec = null;
+    }
+    filt.follow = null; showNotice(`«${r.name}» eliminada.`);
+    await loadAll(); renderPlan(); renderFollow();
+  } catch (e) { showNotice(writeErr(e)); }
+};
 $("mStage").onchange = (e) => { if (e.target.value) pickStage(e.target.value); };
 $("mYear").onchange = async (e) => {
   const v = e.target.value;

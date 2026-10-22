@@ -265,7 +265,9 @@
           <summary id="recSum">Rutas grabadas</summary>
           <ul class="tracks" id="recList"></ul>
         </details>
-        <div class="layersbar" data-title="Mapas">
+        <details class="layersbox" id="lyBox">
+        <summary>🗺️ Mapas <small>caminos, satélite, mapas guardados y descargas</small></summary>
+        <div class="layersbar">
           <label>Caminos <select id="lyBase"><option value="osm">OpenStreetMap</option><option value="topo">Topográfico</option><option value="s2">Satélite descargado</option><option value="none">Ninguno</option></select></label>
           <label class="chk"><input type="checkbox" class="sw" id="lySat" checked> Satélite</label>
           <label class="op">Opacidad <input type="range" id="lyOp" min="0" max="100" step="5" value="100"> <span id="lyOpTxt">100 %</span></label>
@@ -273,8 +275,9 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 69</span>
+          <span class="msg ver">Versión 70</span>
         </div>
+        </details>
         </div>
         <div class="gmap" id="gmap"></div>
         <div class="scale"><span id="scaleTxt"></span><span id="scaleHelp">Toca waypoints o cualquier punto para ver distancia y rumbo</span></div>

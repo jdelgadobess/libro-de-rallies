@@ -517,3 +517,11 @@ body:not(.tab-plan) [data-plan] { display: none !important }
 @media (max-width: 880px) { .tab-imp .desk > .col:first-child > [data-imp] { grid-column: auto } }
 #sYear.big { font-size: 1.3rem; font-weight: 700; padding: 6px 10px; width: auto }
 .stagebar { flex-wrap: wrap }
+/* Mapas folded away in the map menu: it opens with a tap */
+.layersbox { border-bottom: 1px solid var(--line) }
+.layersbox > summary { cursor: pointer; padding: 10px 12px; font-weight: 600; font-size: .9rem; list-style: none; display: flex; align-items: baseline; gap: 8px }
+.layersbox > summary::-webkit-details-marker { display: none }
+.layersbox > summary::after { content: "▾"; margin-left: auto; transition: transform .15s }
+.layersbox[open] > summary::after { transform: rotate(180deg) }
+.layersbox > summary small { font-weight: 400; color: var(--muted); font-size: .78rem }
+.layersbox > .layersbar { border-bottom: 0; padding-bottom: 10px }

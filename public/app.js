@@ -1635,3 +1635,6 @@ try { const m = localStorage.getItem("rally.followM"); if (m) $("followM").value
 $("followM").addEventListener("change", () => { try { localStorage.setItem("rally.followM", $("followM").value); } catch (e) {} });
 // the record / stop buttons above the table follow the GPS's own recording button
 new MutationObserver(() => renderDownloads()).observe($("recBtn"), { attributes: true, attributeFilter: ["class"] });
+// the Mapas fold stays as it was left
+try { $("lyBox").open = localStorage.getItem("rally.lyopen") === "1"; } catch (e) {}
+$("lyBox").addEventListener("toggle", () => { try { localStorage.setItem("rally.lyopen", $("lyBox").open ? "1" : "0"); } catch (e) {} });

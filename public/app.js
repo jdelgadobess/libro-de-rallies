@@ -350,6 +350,9 @@ function renderScope() {
     sel.textContent = ""; opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
   }
   sel.value = state.stageFilter;
+  // the same year and stage above the map, so the stage is picked right where the GPS and the routes are
+  const ms = $("mStage"); ms.textContent = ""; [...sel.options].forEach((o) => ms.append(new Option(o.value === "all" ? "Todas las etapas" : o.textContent, o.value))); ms.value = sel.value;
+  const my = $("mYear"); my.textContent = ""; [...$("fYear").options].forEach((o) => my.append(new Option(o.text, o.value))); my.value = $("fYear").value;
   $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size && !filt.ptsOff.size && !filt.only;
   renderPtsFilter();
 }
@@ -374,6 +377,8 @@ function renderPtsFilter() {
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
+$("mStage").onchange = (e) => pickStage(e.target.value);
+$("mYear").onchange = (e) => { $("fYear").value = e.target.value; $("fYear").onchange({ target: $("fYear") }); };
 $("sYear").onchange = (e) => { $("fYear").value = e.target.value; $("fYear").onchange({ target: $("fYear") }); if (e.target.value === "new") e.target.value = state.rallyId || ""; };
 $("fYear").onchange = (e) => {
   if (e.target.value === "new") { e.target.value = state.rallyId || ""; setTab("imp"); openYearForm(); $("yearForm").scrollIntoView({ behavior: "smooth", block: "center" }); return; }

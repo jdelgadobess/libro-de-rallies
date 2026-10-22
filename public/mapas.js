@@ -96,8 +96,8 @@ async function openPmtiles(blob, key) {
   const src = { getKey: () => key, getBytes: async (offset, length) => ({ data: await blob.slice(offset, offset + length).arrayBuffer() }) };
   const p = new window.pmtiles.PMTiles(src);
   const h = await p.getHeader();
-  if (h.tileType !== 1) throw new Error("no es un mapa vectorial de Protomaps");
-  return { p, minZoom: h.minZoom, maxZoom: h.maxZoom, bounds: [[h.minLat, h.minLon], [h.maxLat, h.maxLon]] };
+  if (h.tileType < 1 || h.tileType > 5) throw new Error("no es un mapa .pmtiles que se pueda abrir");
+  return { p, raster: h.tileType !== 1, minZoom: h.minZoom, maxZoom: h.maxZoom, bounds: [[h.minLat, h.minLon], [h.maxLat, h.maxLon]] };
 }
 function offroadStyle() {
   const P = window.protomapsL;
@@ -141,6 +141,10 @@ function offroadStyle() {
 }
 // contour lines (curvas-*.pmtiles): brown, thicker every 100 m with its height written on it
 const isContours = (m) => /^curvas/i.test(m.file || "");
+// slopes (pendientes-*.pmtiles): pictures of the ground coloured by how steep it is, drawn over the maps
+const isSlope = (m) => /^pendientes/i.test(m.file || "");
+const isOverlay = (m) => isContours(m) || isSlope(m);
+const SLOPE_KEY = [["#2ea043", "llano"], ["#78be3c", "5°"], ["#f0dc28", "10°"], ["#faaa1e", "15°"], ["#eb641e", "22°"], ["#d21e1e", "30°"], ["#821478", "45°"]];
 function contourStyle() {
   const P = window.protomapsL;
   return {
@@ -203,7 +207,7 @@ export function openTiles(SQL, bytes) {
 // the off-road map kept on this device that covers a point (Morocco, Spain…), for the route planner; null if none
 const orCache = new Map();
 export async function offroadMap(at) {
-  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m) && (m.blob || m.done));
+  const maps = (await idb.all("maps")).filter((m) => /\.pmtiles$/i.test(m.file || "") && !isOverlay(m) && (m.blob || m.done));
   if (!maps.length) return null;
   const open = async (m) => { if (!orCache.has(m.id)) orCache.set(m.id, { id: m.id, name: m.name, ...(await openPmtiles(await blobOf(m), m.id)) }); return orCache.get(m.id); };
   let found = null;
@@ -240,6 +244,8 @@ export function setupLayers(lmap) {
   lmap.createPane("sat", lmap._rotatePane).style.zIndex = 300;
   lmap.createPane("contours", lmap._rotatePane).style.zIndex = 320; // over the satellite too
   lmap.getPane("contours").style.pointerEvents = "none";
+  lmap.createPane("slope", lmap._rotatePane).style.zIndex = 310; // over the satellite, under the contour lines
+  lmap.getPane("slope").style.pointerEvents = "none"; lmap.getPane("slope").style.opacity = .7;
   Object.values(bases).forEach((l) => { l.options.pane = "base"; });
   lmap.createPane("s2", lmap._rotatePane).style.zIndex = 270; // the downloaded satellite goes over the off-road map, like Esri's
   dlSat.forEach((l) => { l.options.pane = "s2"; });
@@ -273,6 +279,19 @@ export function setupLayers(lmap) {
       img.src = url; return img;
     },
   });
+  // a .pmtiles of pictures (the slopes), read a tile at a time from the file kept here
+  const RasterPm = L.GridLayer.extend({
+    createTile(c, done) {
+      const img = document.createElement("img"); img.alt = "";
+      this.options.src.p.getZxy(c.z, c.x, c.y).then((r) => {
+        if (!r) { done(null, img); return; }
+        const url = URL.createObjectURL(new Blob([r.data]));
+        img.onload = img.onerror = () => { URL.revokeObjectURL(url); done(null, img); };
+        img.src = url;
+      }).catch(() => done(null, img));
+      return img;
+    },
+  });
   // the satellite sits on top: with a tracks map just turned on, it goes off so the map is seen
   const satOff = () => { if (pref.sat) { pref.sat = false; save(); apply(); } };
   async function turnOn(m, fit) {
@@ -281,7 +300,9 @@ export function setupLayers(lmap) {
     let src, layer;
     if (/\.pmtiles$/i.test(m.file || "")) {
       src = await openPmtiles(await blobOf(m), m.id); await script(PROTOMAPS_JS);
-      layer = isContours(m)
+      layer = isSlope(m)
+        ? new RasterPm({ src, pane: "slope", minZoom: 0, maxZoom: 19, minNativeZoom: src.minZoom, maxNativeZoom: src.maxZoom, bounds: src.bounds, attribution: "Pendientes © Copernicus DEM" })
+        : isContours(m)
         ? window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "contours", bounds: src.bounds, attribution: "Curvas © Copernicus DEM", ...contourStyle() })
         : window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", bounds: src.bounds, attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
       src.close = () => {};
@@ -300,7 +321,7 @@ export function setupLayers(lmap) {
     const box = $("lyFiles"); box.textContent = "";
     let maps = [];
     try { maps = (await idb.all("maps")).filter((m) => m.blob || m.done); } catch (e) { msg("Este navegador no deja guardar mapas sin conexión."); return; }
-    if (!maps.some((m) => /\.pmtiles$/i.test(m.file || "") && !isContours(m))) {
+    if (!maps.some((m) => /\.pmtiles$/i.test(m.file || "") && !isOverlay(m))) {
       const p = document.createElement("span"); p.className = "msg";
       p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd): descárgalo aquí abajo y funcionará sin internet.";
       box.append(p);
@@ -312,7 +333,7 @@ export function setupLayers(lmap) {
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "sw"; cb.checked = pref.on.includes(m.id);
       cb.onchange = async () => {
         pref.on = pref.on.filter((x) => x !== m.id); if (cb.checked) pref.on.push(m.id); save();
-        if (cb.checked) { try { await turnOn(m, true); satOff(); } catch (e) { cb.checked = false; pref.on = pref.on.filter((x) => x !== m.id); save(); msg(`${m.name}: ${e.message}`); } }
+        if (cb.checked) { try { await turnOn(m, !isOverlay(m)); if (!isOverlay(m)) satOff(); } catch (e) { cb.checked = false; pref.on = pref.on.filter((x) => x !== m.id); save(); msg(`${m.name}: ${e.message}`); } }
         else { turnOff(m.id); msg(""); }
       };
       const rm = document.createElement("button"); rm.type = "button"; rm.className = "ghost x"; rm.textContent = "✕"; rm.title = "Quitar este mapa del dispositivo";
@@ -324,6 +345,11 @@ export function setupLayers(lmap) {
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = m.name;
       const sz = document.createElement("small"); sz.textContent = mbTxt(m.size); nm.append(sz);
       l.append(cb, nm, rm); box.append(l);
+      if (isSlope(m) && !box.querySelector(".slopekey")) {
+        const k = document.createElement("div"); k.className = "slopekey";
+        k.innerHTML = SLOPE_KEY.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("");
+        box.append(k);
+      }
     });
     for (const m of maps) if (pref.on.includes(m.id)) { try { await turnOn(m, false); } catch (e) { msg(`${m.name}: ${e.message}`); } }
   }
@@ -378,7 +404,7 @@ export function setupLayers(lmap) {
       m.done = true; await idb.put("maps", m);
       if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
       downloading = null; await list();
-      if (!isContours(m)) satOff();
+      if (!isOverlay(m)) satOff();
       msg(`«${c.name}» ya está en este dispositivo: funciona sin internet. Lo enciendes y apagas con su casilla.`);
       return true;
     } catch (e) {
@@ -399,8 +425,8 @@ export function setupLayers(lmap) {
         await idb.put("maps", m);
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
         if (!pref.on.includes(m.id)) pref.on.push(m.id); save();
-        await list(); turnOff(m.id); await turnOn(m, !isContours(m)); if (!isContours(m)) satOff();
-        msg(`Guardado ${m.name} en este dispositivo: funciona sin internet. Lo encienden y apagan las casillas encima del mapa. He apagado el satélite para que se vea; vuelve a marcarlo si lo quieres encima.`);
+        await list(); turnOff(m.id); await turnOn(m, !isOverlay(m)); if (!isOverlay(m)) satOff();
+        msg(`Guardado ${m.name} en este dispositivo: funciona sin internet. Lo encienden y apagan las casillas encima del mapa.` + (isOverlay(m) ? "" : " He apagado el satélite para que se vea; vuelve a marcarlo si lo quieres encima."));
       } catch (er) { msg(`${f.name}: ${/not a database|malformed/i.test(er.message) ? "no es un archivo de mapa válido" : er.message}`); }
     }
   }

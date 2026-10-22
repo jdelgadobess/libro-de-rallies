@@ -492,3 +492,6 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 .accpop h2 { padding-right: 48px }
 #moreWays[hidden] { display: none }
 .userbar button { white-space: nowrap }
+.slopekey { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .75rem; color: var(--muted, #6b5a45); padding: 2px 4px 6px }
+.slopekey span { display: inline-flex; align-items: center; gap: 4px }
+.slopekey i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; opacity: .85 }

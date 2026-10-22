@@ -495,3 +495,23 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 .slopekey { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .75rem; color: var(--muted, #6b5a45); padding: 2px 4px 6px }
 .slopekey span { display: inline-flex; align-items: center; gap: 4px }
 .slopekey i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; opacity: .85 }
+
+/* tabs: Libro de ruta has the map and the table across the page; year and stage are picked above the table */
+body:not(.tab-plan):not(.tab-imp) .desk { grid-template-columns: minmax(0, 1fr) }
+body:not(.tab-plan):not(.tab-imp) .desk > .col:first-child { display: none }
+body:not(.tab-imp) [data-imp] { display: none !important }
+body:not(.tab-plan) [data-plan] { display: none !important }
+.tab-imp [data-libro], .tab-imp .mapbox { display: none !important }
+/* «Trabajar sin conexión»: one plain button next to the map's menu */
+.offtoggle { display: inline-flex; align-items: center; cursor: pointer }
+.offtoggle input { position: absolute; opacity: 0; width: 1px; height: 1px }
+.offtoggle span { border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: .85rem; font-weight: 600; background: #fff; white-space: nowrap }
+.offtoggle input:checked + span { background: #2b1d0e; color: #ffd27a; border-color: #2b1d0e }
+.offtoggle input:focus-visible + span { outline: 2px solid #e3a21a; outline-offset: 2px }
+.tabdl { flex-wrap: wrap }
+.offtoggle span { text-transform: none; letter-spacing: 0; font-family: var(--body) }
+/* Importar: year, stage and what to import side by side across the page */
+.tab-imp .desk { grid-template-columns: minmax(0, 1fr) }
+.tab-imp .desk > .col:first-child { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; align-items: start }
+.tab-imp .desk > .col:first-child > [data-imp] { grid-column: span 2 }
+@media (max-width: 880px) { .tab-imp .desk > .col:first-child > [data-imp] { grid-column: auto } }

@@ -245,6 +245,11 @@ function render() {
     add.onclick = openYearForm; yc.append(add);
     if (!state.rallies.length && $("yearForm").hidden) openYearForm();
   }
+  // the year above the table, in Libro de ruta
+  const fy = $("fYear"); fy.textContent = "";
+  ralliesSorted().forEach((x) => fy.append(new Option(String(x.year) + (state.rallies.filter((o) => o.year === x.year).length > 1 ? " " + x.name : ""), x.id)));
+  if (canEdit()) fy.append(new Option("+ Nuevo año…", "new"));
+  fy.value = state.rallyId || "";
   $("rallyName").textContent = r ? r.name : "";
   $("rallyDelBox").hidden = !r;
 
@@ -361,6 +366,10 @@ function renderPtsFilter() {
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
+$("fYear").onchange = (e) => {
+  if (e.target.value === "new") { e.target.value = state.rallyId || ""; setTab("imp"); openYearForm(); $("yearForm").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+  state.rallyId = e.target.value; state.stageFilter = "all"; state.hi = null; resetDel(); render();
+};
 $("allStages").onclick = () => pickStage("all");
 // step 2's stage number, its chips and the table's stage filter always show the same stage
 function pickStage(k) {
@@ -987,7 +996,8 @@ function setTab(t) {
   document.body.classList.toggle("tab-mec", t === "mec");
   document.body.classList.toggle("tab-car", t === "car");
   document.body.classList.toggle("tab-rec", t === "rec");
-  [["tabLibro", "libro"], ["tabPlan", "plan"], ["tabRec", "rec"], ["tabMec", "mec"], ["tabCar", "car"]].forEach(([id, k]) => $(id).setAttribute("aria-selected", String(t === k)));
+  document.body.classList.toggle("tab-imp", t === "imp");
+  [["tabLibro", "libro"], ["tabPlan", "plan"], ["tabImp", "imp"], ["tabRec", "rec"], ["tabMec", "mec"], ["tabCar", "car"]].forEach(([id, k]) => $(id).setAttribute("aria-selected", String(t === k)));
   if (t === "mec") { mec = mec || setupMecanica({ sb, canEdit, user: () => state.user, writeErr }); mec.show(); }
   if (t === "rec") renderRecTab();
   if (t === "car") { coches = coches || setupCoches({ sb, canEdit, user: () => state.user, writeErr, toJpeg }); coches.show(); }
@@ -997,6 +1007,7 @@ function setTab(t) {
 }
 $("tabLibro").onclick = () => setTab("libro");
 $("tabPlan").onclick = () => setTab("plan");
+$("tabImp").onclick = () => setTab("imp");
 $("tabMec").onclick = () => setTab("mec");
 $("tabCar").onclick = () => setTab("car");
 $("tabRec").onclick = () => setTab("rec");
@@ -1500,6 +1511,7 @@ function download(name, text, type) {
   const a = document.createElement("a"); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+let recDelArmed = null;
 function renderDownloads() {
   const box = $("dlStages"); box.textContent = "";
   const dl = $("fDl"); dl.textContent = "";
@@ -1521,17 +1533,47 @@ function renderDownloads() {
       $("expMsg").textContent = `Descargado ${stageFile(s)}.gpx con ${list.length === total ? list.length : list.length + " de " + total} waypoints en orden` + (sumPts(list) ? ` (${sumPts(list)} pts)` : "") + (trks.length ? ` y ${trks.length === 1 ? "el track «" + trks[0].name + "»" : trks.length + " tracks"}.` : ".");
     };
     box.append(b);
-    // the stage on screen: its GPX also right above the table, next to its recorded traces
-    if (s === state.stageFilter) { const top = b.cloneNode(true); top.className = "hl"; top.textContent = "⬇ " + b.textContent; top.onclick = b.onclick; dl.append(top); }
   });
-  rallyTracks().filter((t) => t.kind === "grabada" && stageKey(t) === state.stageFilter).forEach((t) => {
-    const g = document.createElement("button"); g.type = "button"; g.className = "ghost";
-    g.textContent = "⬇ Traza " + t.name.replace(/^Grabada/, "grabada");
-    g.title = "GPX de la ruta grabada, con los waypoints de la etapa";
-    g.onclick = () => routeGpx(t.name, t.segs, trackWps(t), stageKey(t), t.rallyId);
-    dl.append(g);
-  });
-  dl.hidden = !dl.children.length;
+  // above the table: one GPX with what is on screen (the stage's waypoints and its tracks), and the recording buttons
+  const st = state.stageFilter;
+  const g = document.createElement("button"); g.type = "button"; g.className = "hl";
+  g.textContent = "⬇ GPX " + (st === "all" ? "de lo marcado" : st === "" ? "sin etapa" : "etapa " + st);
+  g.disabled = !mapWps().length && !visibleTracks().length;
+  g.onclick = () => {
+    const list = mapWps(), trks = visibleTracks(), f = st === "all" ? baseName() : stageFile(st);
+    download(f + ".gpx", buildGpx(list, rally().year + " " + rally().name + " · " + scopeLabel(), trks), "application/gpx+xml");
+    $("expMsg").textContent = `Descargado ${f}.gpx con ${list.length} waypoints en orden` + (sumPts(list) ? ` (${sumPts(list)} pts)` : "") + (trks.length ? ` y ${trks.length === 1 ? "el track «" + trks[0].name + "»" : trks.length + " tracks"}.` : ".");
+  };
+  dl.append(g);
+  if (canEdit() && rally()) {
+    const recording = $("recBtn").classList.contains("warn");
+    const r = document.createElement("button"); r.type = "button"; r.className = recording ? "warn" : "ghost";
+    r.textContent = recording ? "⏹ Parar ruta" : "⏺ Grabar ruta";
+    r.onclick = () => {
+      if (recording) { $("recBtn").onclick(); return; }
+      if (st === "all" || st === "") { $("expMsg").textContent = "Elige primero la etapa: la ruta se graba en ella."; return; }
+      const sel = $("recStage"); if (![...sel.options].some((o) => o.value === st)) sel.append(new Option(stageLabel(st), st));
+      sel.value = st; $("recBtn").onclick();
+    };
+    dl.append(r);
+    const last = rallyTracks().filter((t) => t.kind === "grabada" && stageKey(t) === st).sort((a, b) => String(b.created).localeCompare(String(a.created)))[0];
+    if (recording || last) {
+      const x = document.createElement("button"); x.type = "button"; x.className = "ghost";
+      x.textContent = "🗑 Eliminar ruta"; x.title = recording ? "Descartar la grabación en curso" : `Borrar «${last.name}»`;
+      const key = recording ? "rec" : last.id;
+      // asks once before deleting; the question stays a few seconds even if the table is redrawn
+      if (recDelArmed === key) { x.className = "warn"; x.textContent = recording ? "¿Descartar la grabación?" : `¿Borrar «${last.name}»?`; }
+      x.onclick = async () => {
+        if (recDelArmed !== key) { recDelArmed = key; setTimeout(() => { if (recDelArmed === key) { recDelArmed = null; renderDownloads(); } }, 5000); renderDownloads(); return; }
+        recDelArmed = null;
+        if (recording) { $("recDrop").dataset.armed = "1"; $("recDrop").click(); return; }
+        try { must(await sb.from("tracks").delete().eq("id", last.id)); if (filt.rec === last.id) filt.rec = null; $("expMsg").textContent = `«${last.name}» borrada.`; await loadAll(); }
+        catch (e) { $("expMsg").textContent = writeErr(e); }
+      };
+      dl.append(x);
+    }
+  }
+  dl.hidden = !rally();
   const nw = mapWps().length, nt = visibleTracks().length;
   $("openEarth").disabled = !nw && !nt;
   $("earthScope").textContent = rally() ? `${nw} waypoint${nw === 1 ? "" : "s"}` + (nt ? ` y ${nt} track${nt === 1 ? "" : "s"}` : "") + " · " + scopeLabel() : "";
@@ -1588,3 +1630,5 @@ $("memberForm").addEventListener("submit", async (e) => {
 $("recStage").onchange = (e) => { if (e.target.value) pickStage(e.target.value); };
 try { const m = localStorage.getItem("rally.followM"); if (m) $("followM").value = m; } catch (e) {}
 $("followM").addEventListener("change", () => { try { localStorage.setItem("rally.followM", $("followM").value); } catch (e) {} });
+// the record / stop buttons above the table follow the GPS's own recording button
+new MutationObserver(() => renderDownloads()).observe($("recBtn"), { attributes: true, attributeFilter: ["class"] });

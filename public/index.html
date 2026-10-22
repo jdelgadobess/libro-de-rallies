@@ -68,13 +68,14 @@
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" id="tabLibro" aria-selected="true">Libro de ruta</button>
     <button type="button" role="tab" id="tabPlan" aria-selected="false">Planificador de rutas</button>
+    <button type="button" role="tab" id="tabImp" aria-selected="false">Importar</button>
     <button type="button" role="tab" id="tabRec" aria-selected="false">Rutas grabadas</button>
     <button type="button" role="tab" id="tabMec" aria-selected="false">Mecánica</button>
     <button type="button" role="tab" id="tabCar" aria-selected="false">Coches</button>
   </nav>
   <div class="desk">
     <div class="col">
-      <section class="panel" data-libro>
+      <section class="panel" data-side>
         <h2><span class="n">1</span>Año <small id="rallyName"></small></h2>
         <div class="chips" id="years"></div>
         <form id="yearForm" hidden data-edit>
@@ -91,7 +92,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-side>
         <h2><span class="n">2</span>Etapa</h2>
         <div class="btns stagebar">
           <label style="grid-auto-flow:column;align-items:center;gap:10px">Nº de etapa <input class="big" id="stageNo" type="number" min="0" max="30" inputmode="numeric" placeholder="—"></label>
@@ -129,9 +130,9 @@
         <p class="hint">Usa los waypoints marcados de la etapa y las pistas y carreteras del mapa off-road. Siempre empieza en la SALIDA y acaba en la LLEGADA de la etapa. Donde no hay camino va en línea recta y lo cuenta como «fuera de pista».</p>
       </section>
 
-      <section class="panel" data-libro>
+      <section class="panel" data-imp>
         <h2><span class="n">3</span>Importar</h2>
-        <p class="hint" data-edit>Fotos, waypoints y tracks van a la etapa del paso 2.</p>
+        <p class="hint" data-edit>Fotos, waypoints y tracks van al año y la etapa de los pasos 1 y 2.</p>
         <div class="drop" id="drop" data-edit>
           <label class="import" for="photos">Importar fotos del roadbook</label>
           <input type="file" id="photos" accept="image/*" multiple class="vh">
@@ -190,7 +191,7 @@
     </div>
 
     <div class="col">
-      <div class="review" id="review" data-libro hidden>
+      <div class="review" id="review" data-imp hidden>
         <div class="boxhead"><h2>Waypoints leídos de las fotos <small id="revInfo"></small></h2></div>
         <div class="scroll">
           <table>
@@ -211,6 +212,7 @@
         <div class="boxhead">
           <h2 id="mapTitle">Mapa</h2>
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
+          <label class="offtoggle" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"><span>📴 Trabajar sin conexión</span></label>
           <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
           <span class="rec" id="fullStatus"></span>
           <span class="fmt">Coordenadas
@@ -222,7 +224,7 @@
           </span>
         </div>
         <div class="mapmenu" id="mapMenu">
-        <div class="drawbar" data-edit data-title="Dibujar en el mapa">
+        <div class="drawbar" data-edit data-plan data-title="Crear waypoints y rutas">
           <button type="button" class="ghost" id="drawStart">Dibujar ruta</button>
           <button type="button" class="ghost" id="addStart">📍 Crear waypoints en el mapa</button>
           <span id="addTools" hidden>
@@ -253,7 +255,6 @@
         <div class="gpsbar followbar" data-title="Seguir una ruta">
           <label>Seguir ruta <select id="followSel" aria-label="Ruta a seguir"></select></label>
           <label>Avisar si me desvío más de <input id="followM" type="number" inputmode="numeric" min="10" step="10" value="50"> m</label>
-          <label class="chk" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" class="sw" id="offMode"> 📴 Trabajar sin conexión</label>
           <button type="button" class="hl" id="followBtn">▶ Iniciar ruta</button>
           <span class="rec" id="followInfo"></span>
         </div>
@@ -269,7 +270,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 66</span>
+          <span class="msg ver">Versión 67</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>
@@ -290,6 +291,7 @@
 
       <div class="tablebox" data-libro>
         <div class="filters" id="filters">
+          <label>Año <select id="fYear"></select></label>
           <label>Etapa <select id="fStage"></select></label>
           <label>Buscar <input id="fText" type="search" placeholder="WP27, S rojo, pág 23…" autocomplete="off"></label>
           <label>Del WP <input id="fFrom" type="number" inputmode="numeric" min="0" placeholder="1"></label>
@@ -315,7 +317,7 @@
           <label style="grid-auto-flow:column;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:.82rem" title="Algunos GPS ordenan por nombre y ponen WP10 antes que WP2. Con ceros quedan en orden.">
             <input type="checkbox" id="padNums" style="width:auto"> Números con ceros (WP027)</label>
         </div>
-        <div class="foot" style="padding-top:0">
+        <div class="foot" style="padding-top:0" hidden>
           <div class="dl-stages" id="dlStages"></div>
           <button type="button" class="ghost" id="dlSel">GPX de lo marcado</button>
         </div>

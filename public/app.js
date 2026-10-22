@@ -351,8 +351,20 @@ function renderScope() {
   }
   sel.value = state.stageFilter;
   // the same year and stage above the map, so the stage is picked right where the GPS and the routes are
-  const ms = $("mStage"); ms.textContent = ""; [...sel.options].forEach((o) => ms.append(new Option(o.value === "all" ? "Todas las etapas" : o.textContent, o.value))); ms.value = sel.value;
-  const my = $("mYear"); my.textContent = ""; [...$("fYear").options].forEach((o) => my.append(new Option(o.text, o.value))); my.value = $("fYear").value;
+  // above the map: years 2026 to 2030 and stages 1 to 6 always offered (plus any other already used)
+  const ms = $("mStage"); ms.textContent = "";
+  const stN = [...new Set(["1", "2", "3", "4", "5", "6", ...allStages().filter((k) => k !== "")])].sort(natural);
+  if (state.stageFilter === "all" || state.stageFilter === "") { const o = new Option("Elige", ""); o.disabled = true; ms.append(o); }
+  stN.forEach((k) => ms.append(new Option(String(k) + (kindLabel(k) ? " · " + kindLabel(k) : ""), k)));
+  ms.value = stN.includes(state.stageFilter) ? state.stageFilter : "";
+  const my = $("mYear"); my.textContent = "";
+  const yrs = [...new Set([2026, 2027, 2028, 2029, 2030, ...state.rallies.map((x) => x.year)])].sort((a, b) => a - b);
+  yrs.forEach((y) => {
+    const rs = ralliesSorted().filter((x) => x.year === y);
+    if (rs.length) rs.forEach((x) => my.append(new Option(String(y) + (rs.length > 1 ? " " + x.name : ""), x.id)));
+    else if (canEdit()) my.append(new Option(String(y), "y:" + y));
+  });
+  my.value = state.rallyId || "";
   $("fClear").hidden = !filt.text && filt.from === null && filt.to === null && !filt.off.size && !filt.ptsOff.size && !filt.only;
   renderPtsFilter();
 }
@@ -377,8 +389,18 @@ function renderPtsFilter() {
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
-$("mStage").onchange = (e) => pickStage(e.target.value);
-$("mYear").onchange = (e) => { $("fYear").value = e.target.value; $("fYear").onchange({ target: $("fYear") }); };
+$("mStage").onchange = (e) => { if (e.target.value) pickStage(e.target.value); };
+$("mYear").onchange = async (e) => {
+  const v = e.target.value;
+  if (v.startsWith("y:")) {
+    // a year with nothing yet: it is created with the same rally name
+    try {
+      const ref = must(await sb.from("rallies").insert({ year: +v.slice(2), name: (rally() || {}).name || "Rally de Marruecos" }).select().single());
+      state.rallies.push(rallyIn(ref)); state.rallyId = ref.id;
+    } catch (er) { showNotice(writeErr(er)); render(); return; }
+  } else state.rallyId = v;
+  state.stageFilter = "all"; state.hi = null; resetDel(); render();
+};
 $("sYear").onchange = (e) => { $("fYear").value = e.target.value; $("fYear").onchange({ target: $("fYear") }); if (e.target.value === "new") e.target.value = state.rallyId || ""; };
 $("fYear").onchange = (e) => {
   if (e.target.value === "new") { e.target.value = state.rallyId || ""; setTab("imp"); openYearForm(); $("yearForm").scrollIntoView({ behavior: "smooth", block: "center" }); return; }

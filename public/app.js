@@ -665,12 +665,35 @@ function setPhotos(files) {
   if (state.photos.length && currentStage()) readPhotos();
   else if (state.photos.length) { $("stageNo").classList.add("need"); $("stageNo").focus(); }
 }
-$("photos").addEventListener("change", (e) => setPhotos(e.target.files));
+// every import first asks for the year and the stage it goes to (filled in with the ones on screen)
+function askWhere(what) {
+  return new Promise((done) => {
+    const sel = $("whereYear"); sel.textContent = "";
+    ralliesSorted().forEach((x) => sel.append(new Option(String(x.year) + (state.rallies.filter((o) => o.year === x.year).length > 1 ? " " + x.name : ""), x.id)));
+    if (!sel.options.length) { done(null); setTab("imp"); openYearForm(); showNotice("Crea primero el año y vuelve a importar."); return; }
+    sel.value = state.rallyId || sel.options[0].value;
+    $("whereStage").value = currentStage() || (state.stageFilter !== "all" ? state.stageFilter : "");
+    $("whereWhat").textContent = what;
+    $("whereWrap").hidden = false; setTimeout(() => $("whereStage").focus(), 50);
+    const end = (ok) => {
+      $("whereWrap").hidden = true; $("whereForm").onsubmit = $("whereNo").onclick = null;
+      if (!ok) { done(null); return; }
+      const st = String(parseInt($("whereStage").value, 10));
+      state.rallyId = sel.value; $("stageNo").value = st; state.stageFilter = st; state.hi = null; render();
+      done({ rallyId: sel.value, stage: st });
+    };
+    $("whereForm").onsubmit = (e) => { e.preventDefault(); end(true); };
+    $("whereNo").onclick = () => end(false);
+  });
+}
+const nFiles = (f) => f.length === 1 ? `«${f[0].name}»` : `${f.length} archivos`;
+async function photosIn(files) { const f = [...files]; if (!f.length) return; if (await askWhere(`Fotos del roadbook: ${nFiles(f)}.`)) setPhotos(f); else $("photos").value = ""; }
+$("photos").addEventListener("change", (e) => photosIn(e.target.files));
 $("clearPhotos").onclick = () => { $("photos").value = ""; setPhotos([]); };
 const drop = $("drop");
 drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); setPhotos(e.dataTransfer.files); });
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); photosIn(e.dataTransfer.files); });
 
 // phone photos are large; send a 2000px JPEG, plenty to read the coordinates
 async function toJpeg(file, max = 2000) {
@@ -841,11 +864,11 @@ async function importTracks(files) {
     msg.textContent = (rows.length ? `Track guardado en la etapa ${st}: ` + rows.map((r) => `${r.name} (${kmOf(r.points).toFixed(1)} km)`).join(", ") + "." : "") + (bad.length ? " No se pudo: " + bad.join("; ") : "");
   } catch (e) { msg.textContent = writeErr(e); }
 }
-$("trackFile").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importTracks(f); });
+$("trackFile").addEventListener("change", async (e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length && await askWhere(`Track: ${nFiles(f)}.`)) importTracks(f); });
 const tdrop = $("trkDrop");
 tdrop.addEventListener("dragover", (e) => { e.preventDefault(); tdrop.classList.add("over"); });
 tdrop.addEventListener("dragleave", () => tdrop.classList.remove("over"));
-tdrop.addEventListener("drop", (e) => { e.preventDefault(); tdrop.classList.remove("over"); importTracks([...e.dataTransfer.files]); });
+tdrop.addEventListener("drop", (e) => { e.preventDefault(); tdrop.classList.remove("over"); const f = [...e.dataTransfer.files]; if (f.length) askWhere(`Track: ${nFiles(f)}.`).then((ok) => ok && importTracks(f)); });
 // the route picker by "Ver track": show only one route of the stage, or delete it
 function renderTrkPick() {
   const list = stageTracks().sort((a, b) => natural(a.name, b.name));
@@ -1477,11 +1500,11 @@ async function importWaypointFiles(files) {
       (bad.length ? " No se pudo: " + bad.join("; ") : "");
   } catch (err) { msg.textContent = writeErr(err); }
 }
-$("gpxFile").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; importWaypointFiles(f); });
+$("gpxFile").addEventListener("change", async (e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length && await askWhere(`Waypoints: ${nFiles(f)}.`)) importWaypointFiles(f); });
 const wdrop = $("wptDrop");
 wdrop.addEventListener("dragover", (e) => { e.preventDefault(); wdrop.classList.add("over"); });
 wdrop.addEventListener("dragleave", () => wdrop.classList.remove("over"));
-wdrop.addEventListener("drop", (e) => { e.preventDefault(); wdrop.classList.remove("over"); importWaypointFiles([...e.dataTransfer.files]); });
+wdrop.addEventListener("drop", (e) => { e.preventDefault(); wdrop.classList.remove("over"); const f = [...e.dataTransfer.files]; if (f.length) askWhere(`Waypoints: ${nFiles(f)}.`).then((ok) => ok && importWaypointFiles(f)); });
 
 /* ---------- export ---------- */
 const xe = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));

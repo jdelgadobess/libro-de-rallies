@@ -171,7 +171,7 @@
 
       <section class="panel" data-imp>
         <h2><span class="n">3</span>Importar</h2>
-        <p class="hint" data-edit>Fotos, waypoints y tracks van al año y la etapa de los pasos 1 y 2.</p>
+        <p class="hint" data-edit>Al elegir el archivo te pregunta el año y la etapa donde va.</p>
         <div class="drop" id="drop" data-edit>
           <label class="import" for="photos">Importar fotos del roadbook</label>
           <input type="file" id="photos" accept="image/*" multiple class="vh">
@@ -291,7 +291,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 74</span>
+          <span class="msg ver">Versión 75</span>
         </div>
         </details>
         </div>
@@ -406,6 +406,17 @@
   </div>
 </footer>
 <script type="module" src="app.js"></script>
+<div class="accwrap" id="whereWrap" hidden>
+  <form class="panel accpop" id="whereForm" role="dialog" aria-modal="true" aria-labelledby="whereTitle">
+    <h2 id="whereTitle">¿Dónde lo pongo?</h2>
+    <p class="hint" id="whereWhat"></p>
+    <div class="row2">
+      <label>Año <select id="whereYear" required></select></label>
+      <label>Nº de etapa <input id="whereStage" type="number" inputmode="numeric" min="0" max="30" required></label>
+    </div>
+    <div class="btns"><button type="submit" class="hl">Importar aquí</button><button type="button" class="ghost" id="whereNo">Cancelar</button></div>
+  </form>
+</div>
 <div class="accwrap" id="accWrap" hidden>
       <section class="panel accpop" id="adminPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
         <button type="button" class="ghost accx" id="accClose" aria-label="Cerrar">✕</button>

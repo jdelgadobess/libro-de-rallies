@@ -554,3 +554,9 @@ body:not(.tab-plan) #mapTitle { display: none }
 .altbtn.on { background: var(--c); color: #fff }
 .altbtn.on .sw { background: #fff }
 .followbar[hidden] { display: none !important }
+.mapfloat { position: absolute; z-index: 1000; bottom: 34px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; background: rgba(255,255,255,.95); padding: 8px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.35) }
+.mapfloat[hidden] { display: none }
+.mapfloat button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; width: auto; font-size: 1.05rem; font-weight: 700; padding: 10px 16px; border-radius: 9px; border: 1px solid #ccc; background: #fff; color: #222; cursor: pointer }
+.mapfloat button.ok { background: #1e9e3e; border-color: #1e9e3e; color: #fff }
+.mapfloat button:disabled { opacity: .4 }
+.mapfloat button[hidden] { display: none }

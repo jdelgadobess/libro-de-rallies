@@ -520,6 +520,13 @@ function loadMaps() {
   // two fingers turn the map (leaflet-rotate); the compass button puts north back up or the map along the way I drive
   lmap = L.map($("gmap"), { center: [31.5, -5.5], zoom: 6, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, rotateControl: false });
   const layersCtl = setupLayers(lmap);
+  // undo / finish on the map itself, so they are at hand with the map full screen
+  const fl = document.createElement("div"); fl.className = "mapfloat"; fl.id = "mapFloat"; fl.hidden = true;
+  fl.innerHTML = '<button type="button" id="flUndo">↶ Deshacer</button><button type="button" class="ok" id="flEnd">✓ Terminar</button><button type="button" id="flCancel">✕ Cancelar</button>';
+  L.DomEvent.disableClickPropagation(fl); lmap.getContainer().append(fl);
+  fl.querySelector("#flUndo").onclick = () => (drawing ? drawUndo() : $("addUndo").click());
+  fl.querySelector("#flEnd").onclick = () => (drawing ? $(drawing.alt ? "drawAlt" : "drawSave").click() : $("addEnd").click());
+  fl.querySelector("#flCancel").onclick = () => $("drawCancel").click();
   setupGps({ map: lmap, layers: layersCtl, busy: () => !!adding, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
     onMeasure: gpsMeasure, routes: followRoutes, waypoints: () => rallyWps().filter((w) => stageKey(w) === ($("recStage").value || (state.stageFilter !== "all" ? state.stageFilter : ""))), onMove: (lat, lon) => {
       // measuring from where I am: the start follows the GPS, redrawn every few seconds
@@ -1426,6 +1433,7 @@ function renderDraw() {
   $("drawInfo").textContent = on ? `${drawing.pts.length} puntos · ${kmOf([drawing.pts]).toFixed(2)} km · ${jw.length} WP unidos · total ${sumPts(jw)} pts` : "";
   // drawn as an alternative for the planner: «Terminar» adds it next to the proposals
   const alt = on && !!drawing.alt; $("drawAlt").hidden = !alt; $("drawSave").hidden = alt; $("drawAlt").disabled = !on || drawing.pts.length < 2;
+  syncFloat();
   $("drawSave").disabled = $("drawGpx").disabled = !on || drawing.pts.length < 2; $("drawUndo").disabled = !on || !drawing.hist.length;
 }
 // waypoints joined by the drawn line, once each, in the order they were tapped
@@ -1433,6 +1441,13 @@ const drawnWps = () => [...new Set(drawing.wpAt.filter(Boolean))].map((id) => st
 $("drawOnly").onchange = () => renderMap();
 // every change to the line is kept so "Deshacer" (or Ctrl/Cmd+Z) steps back one at a time
 const drawStep = () => drawing.hist.push([drawing.pts.slice(), drawing.wpAt.slice()]);
+function syncFloat() {
+  const f = $("mapFloat"); if (!f) return;
+  f.hidden = !drawing && !adding;
+  $("flUndo").disabled = drawing ? !drawing.hist.length : !adding || !adding.made.length;
+  $("flEnd").disabled = !!drawing && drawing.pts.length < 2;
+  $("flCancel").hidden = !drawing;
+}
 function drawUndo() { if (!drawing || !drawing.hist.length) return; [drawing.pts, drawing.wpAt] = drawing.hist.pop(); renderDraw(); renderMap(); }
 document.addEventListener("keydown", (e) => {
   if (!drawing || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
@@ -1446,6 +1461,7 @@ function renderAdd() {
   $("gmap").classList.toggle("drawing", on || !!drawing);
   if (lmap) (on || drawing) ? lmap.doubleClickZoom.disable() : lmap.doubleClickZoom.enable();
   $("addEdit").disabled = $("addUndo").disabled = !on || !adding.made.length;
+  syncFloat();
   if (on) $("scaleHelp").textContent = `Toca el mapa para crear un waypoint en la ${stageLabel(addStage()).toLowerCase()}`;
 }
 $("addStart").onclick = () => {

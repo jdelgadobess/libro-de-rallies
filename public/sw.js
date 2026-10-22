@@ -1,8 +1,8 @@
 // Keeps the page, its libraries and the map tiles already seen, so the program opens without internet.
-const APP = "libro-app-v63", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", ZONES = "libro-zonas", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
+const APP = "libro-app-v64", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", ZONES = "libro-zonas", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
 const SHELL = ["./", "index.html", "app.js", "mapas.js", "rutas.js", "mecanica.js", "coches.js", "gps.js", "style.css", "config.js", "manifest.webmanifest", "img/icono-192.png", "img/fondo.jpg"];
 const LIB_HOSTS = ["cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com"];
-const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org|tiles\.maps\.eox\.at)$/;
+const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org|tiles\.maps\.eox\.at|www\.ign\.es)$/;
 
 self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL)).catch(() => {})); });
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
@@ -31,8 +31,8 @@ async function cacheFirst(req) {
 }
 // «Trabajar sin conexión»: only the tiles already kept, without trying the network
 async function cacheOnly(u) {
-  u.searchParams.delete("lr_off");
-  const hit = (await (await caches.open(ZONES)).match(u.href)) || (await (await caches.open(TILES)).match(u.href));
+  const href = u.href.replace(/[?&]lr_off=1$/, ""); // as written, so the address matches the one kept
+  const hit = (await (await caches.open(ZONES)).match(href)) || (await (await caches.open(TILES)).match(href));
   return hit || new Response("", { status: 504 });
 }
 // satellite downloaded for a zone first, then the tiles seen before / the network

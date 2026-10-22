@@ -9,13 +9,25 @@ const $ = (id) => document.getElementById(id);
 const S2_URL = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg";
 const S2_ATTR = 'Satélite <a href="https://cloudless.eox.at">EOxCloudless</a> by EOX IT Services GmbH (contiene datos Copernicus Sentinel 2025 modificados)';
 const ZONES = "libro-zonas"; // the service worker keeps this cache and never trims it
-// the tiles (zoom 8 to 14) that cover a rectangle
-function tilesOf([[s, w], [n, e]], z0 = 8, z1 = 14) {
+// Spain: the PNOA orthophoto of the IGN (CC BY 4.0), sharp to a few tens of cm, may be kept offline too
+const PNOA_URL = "https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}";
+const PNOA_ATTR = 'Ortofoto <a href="https://pnoa.ign.es">PNOA</a> cedida por © Instituto Geográfico Nacional';
+const SPAIN = [[[35.95, -9.6], [43.95, 4.6]], [[27.4, -18.4], [29.5, -13.3]]]; // mainland with Baleares, and Canarias
+const inSpain = ([[s, w], [n, e]]) => { const la = (s + n) / 2, lo = (w + e) / 2; return SPAIN.some(([[a, b], [c, d]]) => la >= a && la <= c && lo >= b && lo <= d); };
+// the tiles that cover a rectangle
+function tilesOf([[s, w], [n, e]], z0 = 8, z1 = 14, url = S2_URL) {
   const out = [], lx = (lon, z) => Math.floor((lon + 180) / 360 * 2 ** z);
   const ly = (lat, z) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z); };
-  for (let z = z0; z <= z1; z++) for (let x = lx(w, z); x <= lx(e, z); x++) for (let y = ly(n, z); y <= ly(s, z); y++) out.push(S2_URL.replace("{z}", z).replace("{x}", x).replace("{y}", y));
+  for (let z = z0; z <= z1; z++) for (let x = lx(w, z); x <= lx(e, z); x++) for (let y = ly(n, z); y <= ly(s, z); y++) out.push(url.replace("{z}", z).replace("{x}", x).replace("{y}", y));
   return out;
 }
+const MAX_ZONE = 6000;
+// a zone in Spain gets the PNOA as close as it fits, elsewhere Sentinel-2 (it has nothing past zoom 14)
+function zonePlan(b) {
+  if (inSpain(b)) for (let z = 18; z >= 15; z--) { const urls = tilesOf(b, 8, z, PNOA_URL); if (urls.length <= MAX_ZONE) return { src: "pnoa", z1: z, urls }; }
+  return { src: "s2", z1: 14, urls: tilesOf(b) };
+}
+const zoneUrls = (z) => tilesOf(z.b, 8, z.z1 || 14, z.src === "pnoa" ? PNOA_URL : S2_URL);
 // the maps in 45 MB pieces on the «mapas» branch: GitHub's release files can't be read by a web page, these can
 const PIECES = "https://raw.githubusercontent.com/jdelgadobess/libro-de-rallies/mapas/";
 
@@ -214,6 +226,11 @@ export function setupLayers(lmap) {
     // Sentinel-2 cloudless: 10 m satellite that may be kept offline for non-commercial use (Esri's may not)
     s2: L.tileLayer(S2_URL, { ...co, maxNativeZoom: 14, maxZoom: 19, attribution: S2_ATTR }),
   };
+  // «Satélite descargado»: Sentinel-2 everywhere, and over it the PNOA in Spain
+  // (no crossOrigin: if the IGN doesn't allow reading its images, they are kept as they come and still drawn)
+  const pnoa = SPAIN.map((bounds) => L.tileLayer(PNOA_URL, { maxNativeZoom: 18, maxZoom: 19, bounds, zIndex: 2, attribution: PNOA_ATTR }));
+  const dlSat = [bases.s2, ...pnoa];
+  bases.s2 = L.layerGroup(dlSat);
   const sat = L.layerGroup([
     L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }),
     L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19 }),
@@ -225,7 +242,7 @@ export function setupLayers(lmap) {
   lmap.getPane("contours").style.pointerEvents = "none";
   Object.values(bases).forEach((l) => { l.options.pane = "base"; });
   lmap.createPane("s2", lmap._rotatePane).style.zIndex = 270; // the downloaded satellite goes over the off-road map, like Esri's
-  bases.s2.options.pane = "s2";
+  dlSat.forEach((l) => { l.options.pane = "s2"; });
   sat.eachLayer((l) => { l.options.pane = "sat"; });
 
   const pref = (() => { try { return JSON.parse(localStorage.getItem("rally.layers")) || {}; } catch (e) { return {}; } })();
@@ -395,10 +412,10 @@ export function setupLayers(lmap) {
     d.addEventListener("drop", (e) => { e.preventDefault(); d.classList.remove("over"); importMaps([...e.dataTransfer.files]); });
   });
   // without a connection the online maps only show what this device already keeps (no data spent, no waiting)
-  const online = [...Object.values(bases), ...sat.getLayers()];
+  const online = [...Object.values(bases).filter((l) => l.setUrl), ...dlSat, ...sat.getLayers()];
   online.forEach((l) => { l.options.home = l._url; });
   function setOffline(on) {
-    online.forEach((l) => { const u = on ? l.options.home + "?lr_off=1" : l.options.home; if (l._url !== u) l.setUrl(u); });
+    online.forEach((l) => { const u = on ? l.options.home + (l.options.home.includes("?") ? "&" : "?") + "lr_off=1" : l.options.home; if (l._url !== u) l.setUrl(u); });
   }
   // turns on the off-road map kept here that covers where I am
   async function coverHere(at) {
@@ -413,18 +430,18 @@ export function setupLayers(lmap) {
   async function renderZones() {
     const box = $("lyZones"); if (!box) return;
     box.textContent = "";
-    const t = document.createElement("span"); t.className = "lysub"; t.textContent = "Satélite sin conexión (Sentinel-2, 10 m por píxel)"; box.append(t);
+    const t = document.createElement("span"); t.className = "lysub"; t.textContent = "Satélite sin conexión"; box.append(t);
     for (const z of await zones()) {
       const c = document.createElement("div"); c.className = "mapcard zone";
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = z.name;
-      const sm = document.createElement("small"); sm.textContent = `${Math.round(z.km2).toLocaleString("es")} km² · ${mbTxt(z.bytes)}`; nm.append(sm);
+      const sm = document.createElement("small"); sm.textContent = `${Math.round(z.km2).toLocaleString("es")} km² · ${z.src === "pnoa" ? "PNOA hasta zoom " + z.z1 : "Sentinel-2, 10 m"} · ${mbTxt(z.bytes)}`; nm.append(sm);
       nm.onclick = () => { lmap.fitBounds(z.b); pref.base = "s2"; save(); apply(); };
       const rm = document.createElement("button"); rm.type = "button"; rm.className = "ghost x"; rm.textContent = "✕"; rm.title = "Quitar esta zona del dispositivo";
       rm.onclick = async () => { if (!confirm(`¿Quitar «${z.name}» de este dispositivo?`)) return; await dropZone(z); };
       c.append(nm, rm); box.append(c);
     }
     const b = document.createElement("button"); b.type = "button"; b.className = "ghost dl"; b.disabled = zoning;
-    b.innerHTML = '<b>🛰️</b><span class="nm">Descargar el satélite de lo que ves<small>con wifi · acerca el mapa a la zona</small></span>';
+    b.innerHTML = '<b>🛰️</b><span class="nm">Descargar el satélite de lo que ves<small>con wifi · en España, nítido (PNOA); fuera, 10 m (Sentinel-2)</small></span>';
     b.onclick = downloadZone; box.append(b);
   }
   async function downloadZone() {
@@ -432,25 +449,31 @@ export function setupLayers(lmap) {
     if (!("caches" in window)) { msg("Este navegador no deja guardar el satélite."); return; }
     if (!navigator.onLine) { msg("Para descargar el satélite hace falta internet (mejor con wifi)."); return; }
     const bb = lmap.getBounds(), b = [[bb.getSouth(), bb.getWest()], [bb.getNorth(), bb.getEast()]];
-    const urls = tilesOf(b);
+    const plan = zonePlan(b), urls = plan.urls;
     const km2 = (b[1][0] - b[0][0]) * 111.32 * (b[1][1] - b[0][1]) * 111.32 * Math.cos((b[0][0] + b[1][0]) / 2 * Math.PI / 180);
-    if (urls.length > 6000) { msg(`La zona es muy grande (${Math.round(km2).toLocaleString("es")} km²). Acerca el mapa a la zona que quieras, como mucho unos 80 × 80 km, y vuelve a tocar el botón.`); return; }
-    if (!confirm(`Descargar el satélite de ${Math.round(km2).toLocaleString("es")} km² (${urls.length} imágenes, unos ${Math.max(1, Math.round(urls.length * 0.03))} MB)?`)) return;
+    if (urls.length > MAX_ZONE) { msg(`La zona es muy grande (${Math.round(km2).toLocaleString("es")} km²). Acerca el mapa a la zona que quieras, como mucho unos 80 × 80 km, y vuelve a tocar el botón.`); return; }
+    const what = plan.src === "pnoa" ? `la ortofoto PNOA (nítida hasta el zoom ${plan.z1})` : "el satélite Sentinel-2 (10 m por píxel: fuera de España no hay uno más nítido que se pueda guardar)";
+    if (!confirm(`¿Descargar ${what} de ${Math.round(km2).toLocaleString("es")} km²? Son ${urls.length} imágenes, unos ${Math.max(1, Math.round(urls.length * (plan.src === "pnoa" ? 0.03 : 0.02)))} MB.`)) return;
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
     zoning = true; renderZones();
     const cache = await caches.open(ZONES);
-    let done = 0, bytes = 0, fails = 0, i = 0;
+    let done = 0, bytes = 0, fails = 0, i = 0, opaque = false, corsFails = 0;
     const one = async (url) => {
       if (await cache.match(url)) return;
       for (let t = 0; t < 4; t++) {
         try {
+          if (opaque) { const res = await fetch(url, { mode: "no-cors" }); await cache.put(url, res); bytes += 30000; return; }
           const res = await fetch(url, { mode: "cors" });
           if (res.status === 429 || res.status >= 500) { await new Promise((r) => setTimeout(r, 1500 * (t + 1))); continue; }
           if (!res.ok) { fails++; return; } // no image there (sea, outside the layer)
           const blob = await res.blob(); bytes += blob.size;
           await cache.put(url, new Response(blob, { headers: { "content-type": "image/jpeg" } }));
           return;
-        } catch (e) { await new Promise((r) => setTimeout(r, 1000)); }
+        } catch (e) {
+          // the IGN may not let a page read its images: they are kept as they come, the map can still draw them
+          if (plan.src === "pnoa" && !opaque && ++corsFails >= 3) { opaque = true; continue; }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
       }
       fails++;
     };
@@ -459,15 +482,16 @@ export function setupLayers(lmap) {
     zoning = false;
     if (fails > urls.length * 0.5) { msg("No se pudo descargar el satélite de esta zona. Inténtalo más tarde con wifi."); renderZones(); return; }
     const d = new Date(), list = await zones();
-    list.push({ id: d.getTime(), name: `Zona ${list.length + 1} · ${d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" })}`, b, km2, n: urls.length, bytes });
+    list.push({ id: d.getTime(), name: `Zona ${list.length + 1} · ${d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" })}`, b, km2, n: urls.length, bytes, src: plan.src, z1: plan.z1 });
     await idb.put("kv", list, "zones");
-    pref.base = "s2"; if (pref.sat) pref.sat = false; save(); apply(); renderZones();
-    msg(`Satélite guardado en este dispositivo (${mbTxt(bytes)}): se ve sin internet hasta el zoom 14. En «Caminos» he puesto «Satélite Sentinel-2»; vuelve a OpenStreetMap cuando quieras.`);
+    // the Esri satellite stays on: with internet it is seen on top, without it the downloaded one shows underneath
+    pref.base = "s2"; save(); apply(); renderZones();
+    msg(`Guardado en este dispositivo (${mbTxt(bytes)}). Sin internet se ve nítido hasta el zoom ${plan.z1}. En «Caminos» queda «Satélite descargado», debajo del satélite de siempre.`);
   }
   async function dropZone(z) {
-    const list = (await zones()).filter((x) => x.id !== z.id), keep = new Set(list.flatMap((x) => tilesOf(x.b)));
+    const list = (await zones()).filter((x) => x.id !== z.id), keep = new Set(list.flatMap(zoneUrls));
     const cache = await caches.open(ZONES);
-    for (const u of tilesOf(z.b)) if (!keep.has(u)) await cache.delete(u);
+    for (const u of zoneUrls(z)) if (!keep.has(u)) await cache.delete(u);
     await idb.put("kv", list, "zones"); renderZones(); msg(`«${z.name}» quitada de este dispositivo.`);
   }
   apply(); list(); renderZones();

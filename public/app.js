@@ -1094,7 +1094,7 @@ async function loadPlan() {
   const byId = new Map(rallyWps().map((w) => [w.id, w]));
   plan.alts = row.alts.map((a) => { const wps = a.wpIds.map((id) => byId.get(id)).filter(Boolean); return { ...a, wps, ids: new Set(wps.map((w) => w.id)) }; });
   plan.sel = 0;
-  $("pMsg").textContent = `Propuestas calculadas el ${new Date(row.created_at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}. Pulsa «Calcular» para rehacerlas.` + (row.note ? " " + row.note.replace(/^\d+ propuestas[^.]*\.\s*/, "") : "");
+  $("pMsg").textContent = `Propuestas calculadas el ${new Date(row.created_at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}. Pulsa «Proponer ruta» para rehacerlas.` + (row.note ? " " + row.note.replace(/^\d+ propuestas[^.]*\.\s*/, "") : "");
   renderPlan(); renderMap(); renderFollow();
   if (lmap && state.tab === "plan") lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
 }
@@ -1259,7 +1259,7 @@ async function satFill(wps, msg) {
 let drawing = null;
 function renderDraw() {
   const on = !!drawing;
-  $("drawStart").hidden = on || !!adding; $("addStart").hidden = on || !!adding; $("drawTools").hidden = !on;
+  $("drawStart").hidden = on || !!adding; $("addStart").hidden = on || !!adding; $("drawTools").hidden = !on; $("pDraw").disabled = on || !!adding;
   $("gmap").classList.toggle("drawing", on);
   // quick taps while drawing must add points, not zoom in
   if (lmap) on ? lmap.doubleClickZoom.disable() : lmap.doubleClickZoom.enable();
@@ -1340,6 +1340,7 @@ $("addUndo").onclick = async () => {
   catch (e) { adding.made.push(id); $("drawMsg").textContent = writeErr(e); }
 };
 $("addEdit").onclick = () => { const w = adding && state.wps.find((x) => x.id === adding.made[adding.made.length - 1]); if (w) startEdit(w); };
+$("pDraw").onclick = () => { $("drawStart").click(); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); };
 $("drawStart").onclick = () => { drawing = { pts: [], wpAt: [], hist: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
 $("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
 $("drawUndo").onclick = drawUndo;

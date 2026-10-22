@@ -1,0 +1,84 @@
+name: Pendientes
+
+# Builds pendientes-<zona>.pmtiles: the ground coloured by how steep it is (like OsmAnd's slope layer),
+# from the same Copernicus DEM (90 m) as the contour lines, to download in the program and see without internet.
+on:
+  workflow_dispatch:
+    inputs:
+      zona:
+        description: "marruecos o espana"
+        default: marruecos
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ZONA: ${{ inputs.zona }}
+    steps:
+      - name: Herramientas
+        run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
+          { sudo apt-get update -qq && sudo apt-get install -y -qq gdal-bin; } > tools.log 2>&1 || { echo "::error::$(tail -c 1500 tools.log | tr '\n' '|')"; exit 1; }
+          gh release download -R protomaps/go-pmtiles -p '*Linux_x86_64.tar.gz' -D /tmp/pm && tar -xzf /tmp/pm/*.tar.gz -C /tmp/pm && sudo mv /tmp/pm/pmtiles /usr/local/bin/
+          echo "::notice::$(gdal-config --version) · $(gdalinfo --formats | grep -c -i webp) webp · $(pmtiles version 2>&1 | head -1)"
+      - name: Modelo del terreno
+        run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
+          case "$ZONA" in
+            marruecos) S=27; N=35; W=-14; E=-1 ;;
+            espana)    S=36; N=43; W=-10; E=4 ;;
+            *) echo "zona desconocida"; exit 1 ;;
+          esac
+          mkdir dem
+          for lat in $(seq $S $N); do for lon in $(seq $W $E); do
+            ns=$([ $lat -ge 0 ] && echo N || echo S); ew=$([ $lon -ge 0 ] && echo E || echo W)
+            n=$(printf "Copernicus_DSM_COG_30_%s%02d_00_%s%03d_00_DEM" $ns ${lat#-} $ew ${lon#-})
+            curl -sf -o dem/$n.tif "https://copernicus-dem-90m.s3.eu-central-1.amazonaws.com/$n/$n.tif" && echo "$n" || true
+          done; done
+          ls dem | wc -l
+          gdalbuildvrt -q dem.vrt dem/*.tif
+      - name: Pendientes
+        run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
+          CO="-co COMPRESS=DEFLATE -co TILED=YES -co BIGTIFF=YES"
+          # slope in degrees on a projection in metres (LAEA), so it is right at every latitude
+          gdalwarp -q -t_srs EPSG:3035 -tr 90 90 -r bilinear -multi -wo NUM_THREADS=ALL_CPUS $CO dem.vrt dem3035.tif
+          gdaldem slope -q -compute_edges $CO dem3035.tif slope.tif
+          rm dem3035.tif
+          # 0 (sea, flat to the metre) clear; green flat, yellow steep, orange, red very steep, purple cliffs
+          cat > ramp.txt <<'R'
+          nv 0 0 0 0
+          0 0 0 0 0
+          0.5 46 160 67 120
+          5 120 190 60 140
+          10 240 220 40 160
+          15 250 170 30 170
+          22 235 100 30 180
+          30 210 30 30 190
+          45 130 20 120 200
+          90 80 0 80 210
+          R
+          sed -i 's/^ *//' ramp.txt
+          gdaldem color-relief -q -alpha -nearest_color_entry slope.tif ramp.txt color.tif $CO 2>/dev/null || gdaldem color-relief -q -alpha slope.tif ramp.txt color.tif $CO
+          rm slope.tif
+          # zoom 11 (76 m a pixel) is as fine as a 90 m model goes; smaller zooms are overviews
+          gdalwarp -q -t_srs EPSG:3857 -tr 76.437028 76.437028 -r bilinear -multi $CO color.tif color3857.tif
+          rm color.tif
+          gdal_translate -q -of MBTILES -co TILE_FORMAT=WEBP -co QUALITY=70 -co ZOOM_LEVEL_STRATEGY=UPPER color3857.tif pendientes.mbtiles
+          gdaladdo -q -r average pendientes.mbtiles 2 4 8 16 32 64
+          pmtiles convert pendientes.mbtiles pendientes-$ZONA.pmtiles
+          ls -la pendientes.mbtiles pendientes-$ZONA.pmtiles
+          pmtiles show pendientes-$ZONA.pmtiles | head -20
+      - name: Publicar
+        run: |
+          trap 'echo "::error::Falla en: $BASH_COMMAND"' ERR
+          MB=$(( $(stat -c %s pendientes-$ZONA.pmtiles) / 1048576 ))
+          echo "::notice::pendientes-$ZONA.pmtiles $MB MB"
+          gh release delete pendientes-$ZONA -R "$GITHUB_REPOSITORY" -y --cleanup-tag || true
+          gh release create pendientes-$ZONA pendientes-$ZONA.pmtiles -R "$GITHUB_REPOSITORY" --title "Pendientes ($ZONA)" \
+            --notes "El terreno coloreado según la pendiente, del modelo Copernicus DEM (90 m), $MB MB. © DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH 2014-2018, distribuido por COPERNICUS (Unión Europea y ESA)."

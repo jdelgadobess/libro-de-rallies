@@ -39,6 +39,8 @@ jobs:
           curvas-marruecos|curvas-marruecos|curvas-marruecos.pmtiles|Curvas de nivel de Marruecos
           espana|mapa-espana|espana.pmtiles|España
           curvas-espana|curvas-espana|curvas-espana.pmtiles|Curvas de nivel de España
+          pendientes-marruecos|pendientes-marruecos|pendientes-marruecos.pmtiles|Pendientes de Marruecos
+          pendientes-espana|pendientes-espana|pendientes-espana.pmtiles|Pendientes de España
           EOF
           echo "]" >> mapas.json
           cat mapas.json; du -sh .
@@ -49,7 +51,7 @@ jobs:
           git init -q -b mapas && git config user.name "github-actions" && git config user.email "github-actions@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           # GitHub takes at most 2 GB per push: Spain goes in a second push
-          git add mapas.json marruecos.* curvas-* && git commit -qm "Mapas de Marruecos y curvas"
+          git add mapas.json marruecos.* curvas-* $(ls pendientes-marruecos.* 2>/dev/null) && git commit -qm "Mapas de Marruecos y curvas"
           git push -q -f origin mapas
-          if ls espana.pmtiles.* >/dev/null 2>&1; then git add espana.pmtiles.* && git commit -qm "Mapa de España" && git push -q origin mapas; fi
+          if ls espana.pmtiles.* >/dev/null 2>&1; then git add espana.pmtiles.* $(ls pendientes-espana.* 2>/dev/null) && git commit -qm "Mapa de España" && git push -q origin mapas; fi
           echo "::notice::rama mapas publicada"

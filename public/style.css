@@ -540,3 +540,11 @@ body:not(.tab-plan) #mapTitle { display: none }
 .mapsel label { display: flex; align-items: center; gap: 6px; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
 .mapsel #mDel { padding: 6px 12px; font-size: .85rem }
 .tab-plan #yearBox { display: none !important }
+#stageBox { padding: 10px 14px }
+#stageBox h2 { display: none }
+#stageBox .stagebar { flex-wrap: wrap; gap: 8px 18px; margin: 0; align-items: center; justify-content: flex-start }
+#stageBox .stagebar label { font-size: .85rem }
+#stageBox #sYear.big, #stageBox input.big { font-family: inherit; font-size: 1rem; font-weight: 700; padding: 4px 8px; width: auto; min-width: 0 }
+#stageBox input.big { width: 4em }
+#stageDel { display: none !important }
+.tab-plan #trkBox { display: none !important }

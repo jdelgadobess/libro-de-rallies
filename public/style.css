@@ -319,7 +319,7 @@ body.mapfull { overflow: hidden }
 .recbox { padding: 6px 12px; border-bottom: 1px solid var(--line) }
 .recbox summary { cursor: pointer; font-weight: 700; font-size: .9rem }
 .recbox ul { margin-top: 6px }
-.gps-head { background: none; border: 0 } .gps-head svg { width: 34px; height: 34px; display: block }
+.gps-head { background: none; border: 0 } .gps-head svg { width: 46px; height: 46px; display: block; filter: drop-shadow(0 1px 3px rgba(0,0,0,.45)) }
 body:not(.tab-rec) #recTab { display: none }
 .tab-rec .desk { display: none }
 .recs h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .04em; font-size: 1.2rem; margin: 18px 0 6px }

@@ -80,11 +80,14 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
       dot = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).bindTooltip("Estás aquí · tócame para medir desde aquí").addTo(layer);
       dot.on("click", (e) => { L.DomEvent.stopPropagation(e); measureHere(); });
     } else { dot.setLatLng(ll); ring.setLatLng(ll).setRadius(acc); }
+    // once I'm moving, an arrow twice the dot's size pointing where I'm heading takes the dot's place
+    // (the dot stays, invisible, so it can still be touched to measure from here)
     if (course !== undefined) {
-      const icon = L.divIcon({ className: "gps-head", iconSize: [34, 34], iconAnchor: [17, 17],
-        html: `<svg viewBox="0 0 34 34" style="transform:rotate(${Math.round(course)}deg)"><path d="M17 2 L23 14 L17 11 L11 14 Z" fill="#1a73e8" stroke="#fff" stroke-width="1.5"/></svg>` });
+      const icon = L.divIcon({ className: "gps-head", iconSize: [46, 46], iconAnchor: [23, 23],
+        html: `<svg viewBox="0 0 46 46" style="transform:rotate(${Math.round(course)}deg)"><path d="M23 3 L39 41 L23 32 L7 41 Z" fill="#1a73e8" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>` });
       if (!head) head = L.marker(ll, { icon, rotateWithView: true, interactive: false, keyboard: false }).addTo(layer); else head.setLatLng(ll).setIcon(icon);
-    } else if (head) { layer.removeLayer(head); head = null; }
+      dot.setStyle({ opacity: 0, fillOpacity: 0 });
+    } else { if (head) { layer.removeLayer(head); head = null; } dot.setStyle({ opacity: 1, fillOpacity: 1 }); }
     if (follow) center(ll);
   }
   // the map goes where I am; along the way, with me low on the screen so more of the road ahead shows
@@ -138,7 +141,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
   function stopWatch() {
     if (watch !== null) navigator.geolocation.clearWatch(watch);
-    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; ui();
+    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; hdg.hidden = true; ui();
   }
 
   function drawRec() {
@@ -285,13 +288,18 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   const wpb = document.createElement("div"); wpb.className = "navbox wpnav"; wpb.hidden = true;
   [hdg, wpb].forEach((d) => { L.DomEvent.disableClickPropagation(d); map.getContainer().append(d); });
   const arrowSvg = (deg, color) => `<svg viewBox="0 0 40 40" style="transform:rotate(${Math.round(deg)}deg)"><path d="M20 3 L31 33 L20 26 L9 33 Z" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
-  function checkNav(p) {
-    if (!fol || p.coords.accuracy > MAX_ACC) return;
-    const here = [p.coords.latitude, p.coords.longitude], spd = p.coords.speed || 0;
-    fol.course = course;
+  // the course box shows whenever the GPS is on, following a route or not
+  function showHdg(p) {
+    const spd = p.coords.speed || 0;
     hdg.hidden = false;
-    hdg.innerHTML = fol.course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
-      : `<b>Rumbo</b>${arrowSvg(fol.course + bear(), "#1a73e8")}<span class="big">${String(Math.round(fol.course) % 360).padStart(3, "0")}°</span><small>${card(fol.course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
+    hdg.innerHTML = course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
+      : `<b>Rumbo</b>${arrowSvg(course + bear(), "#1a73e8")}<span class="big">${String(Math.round(course) % 360).padStart(3, "0")}°</span><small>${card(course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
+  }
+  function checkNav(p) {
+    showHdg(p);
+    if (!fol || p.coords.accuracy > MAX_ACC) return;
+    const here = [p.coords.latitude, p.coords.longitude];
+    fol.course = course;
     // the nearest waypoint of the stage not taken yet
     let best = null;
     for (const w of waypoints()) {
@@ -325,7 +333,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     followUi(); if (last) checkRoute(last);
   }
   function stopFollow() {
-    const own = fol && fol.ownRec; fol = null; folLayer.clearLayers(); showOff(0); hdg.hidden = wpb.hidden = true; followUi(); say("Ruta terminada");
+    const own = fol && fol.ownRec; fol = null; folLayer.clearLayers(); showOff(0); wpb.hidden = true; followUi(); say("Ruta terminada");
     if (own && rec) stopRec();
   }
   $("followBtn").onclick = () => (fol ? stopFollow() : startFollow());

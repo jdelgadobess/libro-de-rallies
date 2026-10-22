@@ -71,7 +71,9 @@ const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId
 const allStages = () => stagesOf([...rallyWps(), ...rallyTracks(), ...(state.stages || []).filter((x) => x.rallyId === state.rallyId), ...(currentStage() ? [{ stage: currentStage() }] : [])]);
 // «Caza» or «Seguimiento», as set when the stage was created
 const stageKind = (k) => ((state.stages || []).find((x) => x.rallyId === state.rallyId && x.stage === k) || {}).kind || "";
-const kindLabel = (k) => ({ caza: "Caza", seguimiento: "Seguimiento" })[stageKind(k)] || "";
+const KINDS = { seg_track: "Seguimiento track", seg_wp: "Seguimiento waypoint", caza: "Caza waypoint", seguimiento: "Seguimiento waypoint" };
+const kindLabel = (k) => KINDS[stageKind(k)] || "";
+const isCaza = (k) => { const v = stageKind(k); return !v || v === "caza"; }; // points are a must only when hunting
 const stageTracks = () => rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter);
 // a route picked in «Seguir ruta» shows alone on the map (a planner's proposal: no track, the proposal stands out)
 const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.rec === t.id || (filt.follow != null ? String(t.id) === filt.follow : filt.only ? t.id === filt.only : filt.trk ? t.id === filt.trk : state.stageFilter === "all" || stageKey(t) === state.stageFilter)) : [];
@@ -357,6 +359,8 @@ function renderScope() {
   if (state.stageFilter === "all" || state.stageFilter === "") { const o = new Option("Elige", ""); o.disabled = true; ms.append(o); }
   stN.forEach((k) => ms.append(new Option(String(k) + (kindLabel(k) ? " · " + kindLabel(k) : ""), k)));
   ms.value = stN.includes(state.stageFilter) ? state.stageFilter : "";
+  const mk = $("mKind"), kOk = state.stageFilter !== "all" && state.stageFilter !== "";
+  mk.disabled = !kOk || !canEdit(); mk.value = kOk ? (stageKind(state.stageFilter) === "seguimiento" ? "seg_wp" : stageKind(state.stageFilter)) : "";
   const my = $("mYear"); my.textContent = "";
   const yrs = [...new Set([2026, 2027, 2028, 2029, 2030, ...state.rallies.map((x) => x.year)])].sort((a, b) => a - b);
   yrs.forEach((y) => {
@@ -407,6 +411,14 @@ $("mDel").onclick = async () => {
     filt.follow = null; showNotice(`«${r.name}» eliminada.`);
     await loadAll(); renderPlan(); renderFollow();
   } catch (e) { showNotice(writeErr(e)); }
+};
+// the stage's type: what the map shows for it (its track, or its waypoints)
+$("mKind").onchange = async (e) => {
+  const st = state.stageFilter, kind = e.target.value; if (!kind || st === "all" || st === "") return;
+  try { must(await sb.from("stages").upsert({ rally_id: state.rallyId, stage: st, kind, created_by: state.user.email })); }
+  catch (er) { showNotice(writeErr(er)); render(); return; }
+  state.stages = (state.stages || []).filter((x) => !(x.rallyId === state.rallyId && x.stage === st)).concat({ rallyId: state.rallyId, stage: st, kind });
+  render();
 };
 $("mStage").onchange = (e) => { if (e.target.value) pickStage(e.target.value); };
 $("mYear").onchange = async (e) => {
@@ -563,8 +575,15 @@ function renderMap() {
   if (!lmap) return;
   layer.clearLayers(); arrowLines = []; drawArrows();
   const joined = drawing ? new Set(drawing.wpAt.filter(Boolean)) : null;
-  const list = mapWps().filter((w) => !joined || !$("drawOnly").checked || joined.has(w.id)), trks = visibleTracks();
-  $("scaleTxt").textContent = list.length || trks.length ? "Rutas en amarillo · waypoints en verde" : "Sin waypoints en esta selección";
+  // a «Seguimiento track» stage shows its track; a waypoint stage, its waypoints (and the routes driven or followed)
+  const kind = state.stageFilter !== "all" ? stageKind(state.stageFilter) : "";
+  const byKind = (t) => kind === "seg_track" || t.kind === "grabada" || filt.follow != null || filt.rec === t.id || drawing;
+  const list = kind === "seg_track" && !drawing && !adding ? [] : mapWps().filter((w) => !joined || !$("drawOnly").checked || joined.has(w.id));
+  const trks = visibleTracks().filter((t) => !kind || byKind(t));
+  const imp = rallyTracks().filter((t) => stageKey(t) === state.stageFilter && t.kind !== "grabada");
+  $("scaleTxt").textContent = kind === "seg_track" ? (imp.length ? `${kindLabel(state.stageFilter)}: ${imp.map((t) => `«${t.name}» ${kmOf(t.segs).toFixed(1)} km`).join(", ")}` : `${kindLabel(state.stageFilter)}: esta etapa aún no tiene traza. Impórtala en la pestaña Importar.`)
+    : kind ? `${kindLabel(state.stageFilter)}: ${mapWps().length ? mapWps().length + " waypoints" + (sumPts(mapWps()) ? ` (${sumPts(mapWps())} pts)` : "") : "aún no tiene waypoints. Impórtalos en la pestaña Importar."}`
+    : list.length || trks.length ? "Rutas en amarillo · waypoints en verde" : "Sin waypoints en esta selección";
   if (!list.length && !trks.length) return;
   const pts = list.map((w) => [w.lat, w.lon]);
   trks.forEach((t) => t.segs.forEach((seg) => {
@@ -695,7 +714,7 @@ $("stageNo").addEventListener("input", () => {
 });
 $("stageNo").addEventListener("change", () => {
   const s = currentStage();
-  if (s && state.photos.length && !state.pending && !state.reading) readPhotos();
+  void s;
 });
 
 /* ---------- step 3: photos ---------- */
@@ -705,11 +724,10 @@ function setPhotos(files) {
   const t = $("thumbs"); t.querySelectorAll("img").forEach((i) => URL.revokeObjectURL(i.src)); t.textContent = "";
   state.photos.forEach((f) => { const i = document.createElement("img"); i.src = URL.createObjectURL(f); i.alt = f.name; t.append(i); });
   $("clearPhotos").hidden = !state.photos.length; $("readBtn").hidden = true;
-  $("photoMsg").textContent = state.photos.length ? state.photos.length + " foto(s) cargadas." + (currentStage() ? "" : " Pon el nº de etapa en el paso 2 y se leen solas.") : "";
+  $("photoMsg").textContent = state.photos.length ? state.photos.length + " foto(s) cargadas." : "";
   if (all.length && !state.photos.length) $("photoMsg").textContent = "Eso no parece una foto. Usa JPG, PNG o HEIC.";
   render();
-  if (state.photos.length && currentStage()) readPhotos();
-  else if (state.photos.length) { $("stageNo").classList.add("need"); $("stageNo").focus(); }
+  if (state.photos.length) readPhotos();
 }
 // every import first asks for the year and the stage it goes to (filled in with the ones on screen)
 function askWhere(what) {
@@ -733,7 +751,7 @@ function askWhere(what) {
   });
 }
 const nFiles = (f) => f.length === 1 ? `«${f[0].name}»` : `${f.length} archivos`;
-async function photosIn(files) { const f = [...files]; if (!f.length) return; if (await askWhere(`Fotos del roadbook: ${nFiles(f)}.`)) setPhotos(f); else $("photos").value = ""; }
+async function photosIn(files) { const f = [...files]; if (f.length) setPhotos(f); }
 $("photos").addEventListener("change", (e) => photosIn(e.target.files));
 $("clearPhotos").onclick = () => { $("photos").value = ""; setPhotos([]); };
 const drop = $("drop");
@@ -755,8 +773,7 @@ async function toJpeg(file, max = 2000) {
 $("readBtn").onclick = () => readPhotos();
 async function readPhotos() {
   const msg = $("photoMsg");
-  if (!currentStage()) { msg.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").classList.add("need"); $("stageNo").focus(); return; }
-  try { await ensureRally(); } catch (e) { msg.textContent = writeErr(e); return; }
+  if (!rally()) { msg.textContent = "Crea primero el año."; return; }
   state.reading = true; render();
   const found = []; let failed = false;
   try {
@@ -783,20 +800,13 @@ async function readPhotos() {
       desc: [o.box ? "Casilla " + o.box : "", o.km ? "km " + o.km : "", o.note || "", o.dudoso ? "revisar con la foto" : ""].filter(Boolean).join(", "), doubt: !!o.dudoso,
       pts: parseInt(o.puntos, 10) || ptsIn(o.note || ""),
     }));
-    // good readings are saved straight away; only the ones that can't be used wait in the review table
+    // everything read waits in the table: tick the waypoints wanted, then save them to a stage and get their GPX
     const isOk = (x) => x.name && parseCoord(x.latRaw, true) !== null && parseCoord(x.lonRaw, false) !== null;
-    const good = rows.filter(isOk), bad = rows.filter((x) => !isOk(x));
-    try {
-      const res = await saveRows(good);
-      state.pending = bad.length ? bad : null;
-      $("photos").value = ""; setPhotos([]);
-      const doubts = good.filter((x) => x.doubt).length;
-      const withPts = good.filter((x) => x.pts).length;
-      msg.textContent = `Guardados ${res.added} waypoints en la etapa ${currentStage()}` + (res.skipped ? ` (${res.skipped} ya estaban)` : "") + "." +
-        (good.length ? ` ${withPts === good.length ? "Todos con" : withPts + " de " + good.length + " con"} puntuación.` : "") +
-        (doubts ? (doubts > 1 ? ` ${doubts} tienen algún dígito dudoso y salen marcados` : " Uno tiene algún dígito dudoso y sale marcado") + " «revisar con la foto» en la tabla." : "") +
-        (bad.length ? (bad.length > 1 ? ` ${bad.length} no se leyeron bien` : " Uno no se leyó bien") + ": corrígelo en la tabla de arriba y pulsa Guardar." : "");
-    } catch (e) { state.pending = rows; msg.textContent = writeErr(e); }
+    rows.forEach((x) => { x.on = isOk(x); });
+    state.pending = rows;
+    $("photos").value = ""; setPhotos([]);
+    const bad = rows.filter((x) => !isOk(x)).length;
+    msg.textContent = `Leídos ${rows.length} waypoints. Marca en la tabla los que quieres y pulsa «Guardar los marcados y crear su GPX».` + (bad ? ` ${bad > 1 ? bad + " no se leyeron bien" : "Uno no se leyó bien"}: corrígelo o déjalo sin marcar.` : "");
   } else if (!failed) msg.textContent = "No encontré waypoints con coordenadas en las fotos.";
   $("readBtn").hidden = !state.photos.length;
   render();
@@ -844,17 +854,20 @@ function renderReview() {
 }
 $("revCancel").onclick = () => { state.pending = null; render(); };
 $("revSave").onclick = async () => {
-  const st = currentStage(), r = rally();
-  if (!r) return;
   const rows = state.pending.filter((x) => x.on);
+  if (!rows.length) { $("photoMsg").textContent = "Marca en la tabla los waypoints que quieres guardar."; return; }
   const bad = rows.filter((x) => parseCoord(x.latRaw, true) === null || parseCoord(x.lonRaw, false) === null || !x.name.trim());
   if (bad.length) { $("photoMsg").textContent = `Hay ${bad.length} fila(s) marcadas sin nombre o con coordenadas no válidas. Corrígelas o desmárcalas.`; return; }
+  const where = await askWhere(`${rows.length} waypoint${rows.length > 1 ? "s" : ""} de las fotos.`); if (!where) return;
+  const st = where.stage;
   $("revSave").disabled = true;
   try {
     const res = await saveRows(rows);
     state.pending = null;
-    $("photos").value = ""; setPhotos([]);
-    $("photoMsg").textContent = `Guardados ${res.added} waypoints en la etapa ${st || "(sin número)"}` + (res.skipped ? `; ${res.skipped} ya existían y no se duplicaron.` : ".");
+    // the GPX of exactly those waypoints, in the order of the table
+    const names = rows.map((x) => x.name.trim()), list = names.map((n) => rallyWps().find((w) => stageKey(w) === st && String(w.name) === n)).filter(Boolean);
+    if (list.length) download(stageFile(st) + "_fotos.gpx", buildGpx(list, rally().year + " " + rally().name + " · " + stageLabel(st), []), "application/gpx+xml");
+    $("photoMsg").textContent = `Guardados ${res.added} waypoints en la etapa ${st}` + (res.skipped ? `; ${res.skipped} ya existían y no se duplicaron` : "") + `. Descargado ${stageFile(st)}_fotos.gpx con ${list.length}.`;
   } catch (e) { $("photoMsg").textContent = writeErr(e); }
   $("revSave").disabled = false; render();
 };
@@ -1378,7 +1391,7 @@ function addWpAt(ll) {
   const st = addStage(), at = [Math.round(ll.lat * 1e6) / 1e6, Math.round(ll.lng * 1e6) / 1e6];
   const f = document.createElement("form");
   f.innerHTML = '<label for="apNo">Nº</label><input id="apNo" type="number" inputmode="numeric" min="0" step="1" required>' +
-    `<label for="apPts">Puntos</label><input id="apPts" type="number" inputmode="numeric" min="1" step="1"${stageKind(st) === "seguimiento" ? ' placeholder="opcional"' : " required"}>` +
+    `<label for="apPts">Puntos</label><input id="apPts" type="number" inputmode="numeric" min="1" step="1"${isCaza(st) ? " required" : ' placeholder="opcional"'}>` +
     '<p class="e" id="apErr"></p><div class="b"><button type="submit" class="hl">Guardar</button><button type="button" class="ghost" id="apCancel">Cancelar</button></div>';
   const no = f.querySelector("#apNo"), pts = f.querySelector("#apPts"), err = f.querySelector("#apErr");
   no.value = adding.next;
@@ -1393,7 +1406,7 @@ function addWpAt(ll) {
     const n = parseInt(no.value, 10), p = parseInt(pts.value, 10);
     if (!Number.isFinite(n) || n < 0) { err.textContent = "Pon el número."; no.focus(); return; }
     // in a «Seguimiento» stage the points may be left empty
-    if ((!Number.isFinite(p) || p < 1) && !(stageKind(st) === "seguimiento" && pts.value === "")) { err.textContent = "Pon la puntuación."; pts.focus(); return; }
+    if ((!Number.isFinite(p) || p < 1) && !(!isCaza(st) && pts.value === "")) { err.textContent = "Pon la puntuación."; pts.focus(); return; }
     if (rallyWps().some((w) => stageKey(w) === st && String(w.name) === String(n))) { err.textContent = `Ya hay un ${n} en la ${stageLabel(st).toLowerCase()}.`; no.focus(); return; }
     const d = { rallyId: state.rallyId, stage: st, name: String(n), page: "", desc: "", lat: at[0], lon: at[1], pts: Number.isFinite(p) ? p : null };
     f.querySelector("button[type=submit]").disabled = true;
@@ -1418,7 +1431,7 @@ $("addEdit").onclick = () => { const w = adding && state.wps.find((x) => x.id ==
 // a new stage: its number and type, then straight to tapping its waypoints on the map
 $("nsForm").onsubmit = async (e) => {
   e.preventDefault();
-  const msg = $("nsMsg"), n = parseInt($("nsNo").value, 10), kind = document.querySelector("input[name=nsKind]:checked").value;
+  const msg = $("nsMsg"), n = parseInt($("nsNo").value, 10), kind = $("nsKind").value;
   if (!rally()) { msg.textContent = "Elige primero el año."; return; }
   if (!Number.isFinite(n) || n < 0) { msg.textContent = "Pon el nº de etapa."; return; }
   const st = String(n);
@@ -1427,7 +1440,8 @@ $("nsForm").onsubmit = async (e) => {
     state.stages = (state.stages || []).filter((x) => !(x.rallyId === state.rallyId && x.stage === st)).concat({ rallyId: state.rallyId, stage: st, kind });
   } catch (er) { msg.textContent = writeErr(er); return; }
   $("stageNo").value = st; pickStage(st);
-  msg.textContent = `Etapa ${st} creada (${kindLabel(st)}). Toca el mapa donde va cada waypoint y pon su número y su puntuación.`;
+  if (kind === "seg_track") { msg.textContent = `Etapa ${st} creada (${kindLabel(st)}). Importa su traza en la pestaña Importar.`; return; }
+  msg.textContent = `Etapa ${st} creada (${kindLabel(st)}). Toca el mapa donde va cada waypoint y pon su número${kind === "caza" ? " y su puntuación" : ""}.`;
   if (adding) $("addEnd").click();
   $("addStart").click(); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" });
 };

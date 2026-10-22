@@ -117,10 +117,7 @@
         <form id="nsForm">
           <div class="row2">
             <label>Nº de etapa <input id="nsNo" type="number" inputmode="numeric" min="0" max="30" required></label>
-            <fieldset class="kind"><legend>Tipo</legend>
-              <label><input type="radio" name="nsKind" value="caza" checked> Caza</label>
-              <label><input type="radio" name="nsKind" value="seguimiento"> Seguimiento</label>
-            </fieldset>
+            <label>Tipo de etapa <select id="nsKind"><option value="seg_track">Seguimiento track</option><option value="seg_wp">Seguimiento waypoint</option><option value="caza" selected>Caza waypoint</option></select></label>
           </div>
           <div class="btns"><button type="submit" class="hl">Crear etapa y poner waypoints</button></div>
           <p class="hint">Después toca el mapa donde va cada waypoint y pon su número y su puntuación.</p>
@@ -171,7 +168,7 @@
 
       <section class="panel" data-imp>
         <h2><span class="n">3</span>Importar</h2>
-        <p class="hint" data-edit>Al elegir el archivo te pregunta el año y la etapa donde va.</p>
+        <p class="hint" data-edit>Al elegir un GPX te pregunta el año y la etapa donde va. Las fotos se leen primero: marcas los waypoints que quieres y al guardar te pregunta la etapa y te da su GPX.</p>
         <div class="drop" id="drop" data-edit>
           <label class="import" for="photos">Importar fotos del roadbook</label>
           <input type="file" id="photos" accept="image/*" multiple class="vh">
@@ -222,7 +219,7 @@
           <span class="hint">Puedes corregir cualquier casilla. Las coordenadas en rojo no se han leído bien.</span>
           <div class="btns">
             <button type="button" class="ghost" id="revCancel">Descartar</button>
-            <button type="button" class="hl" id="revSave">Guardar en la etapa</button>
+            <button type="button" class="hl" id="revSave">Guardar los marcados y crear su GPX</button>
           </div>
         </div>
       </div>
@@ -230,7 +227,7 @@
       <div class="mapbox">
         <div class="boxhead">
           <h2 id="mapTitle">Mapa</h2>
-          <span class="mapsel" data-libro><label>Año <select id="mYear"></select></label><label>Etapa <select id="mStage"></select></label><button type="button" class="ghost" id="mDel" data-edit>🗑 Eliminar ruta</button></span>
+          <span class="mapsel" data-libro><label>Año <select id="mYear"></select></label><label>Etapa <select id="mStage"></select></label><label>Tipo <select id="mKind"><option value="">—</option><option value="seg_track">Seguimiento track</option><option value="seg_wp">Seguimiento waypoint</option><option value="caza">Caza waypoint</option></select></label><button type="button" class="ghost" id="mDel" data-edit>🗑 Eliminar ruta</button></span>
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
           <label class="offtoggle" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"><span>📴 Trabajar sin conexión</span></label>
           <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
@@ -292,7 +289,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 79</span>
+          <span class="msg ver">Versión 80</span>
         </div>
         </details>
         </div>

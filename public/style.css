@@ -536,3 +536,4 @@ body:not(.tab-plan) #mapTitle { display: none }
 .mapsel select { width: auto; font-family: var(--display); font-weight: 700; font-size: 1.05rem; text-transform: uppercase; letter-spacing: .03em; padding: 5px 30px 5px 10px; border-width: 2px }
 #mStage { border-color: var(--green) }
 .mapbox .boxhead .mapsel select { width: auto !important; min-width: 0; flex: 0 0 auto; max-width: 44vw }
+#earthBox { display: none !important }

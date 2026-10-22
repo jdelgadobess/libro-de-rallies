@@ -70,7 +70,8 @@ const stagesOf = (list) => [...new Set(list.map(stageKey))].sort((a, b) => (a ==
 const rallyTracks = () => state.tracks.filter((t) => t.rallyId === state.rallyId);
 const allStages = () => stagesOf([...rallyWps(), ...rallyTracks(), ...(currentStage() ? [{ stage: currentStage() }] : [])]);
 const stageTracks = () => rallyTracks().filter((t) => state.stageFilter === "all" || stageKey(t) === state.stageFilter);
-const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.rec === t.id || (filt.only ? t.id === filt.only : filt.trk ? t.id === filt.trk : state.stageFilter === "all" || stageKey(t) === state.stageFilter)) : [];
+// a route picked in «Seguir ruta» shows alone on the map (a planner's proposal: no track, the proposal stands out)
+const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.rec === t.id || (filt.follow != null ? String(t.id) === filt.follow : filt.only ? t.id === filt.only : filt.trk ? t.id === filt.trk : state.stageFilter === "all" || stageKey(t) === state.stageFilter)) : [];
 // waypoints a track joins, in the order they were joined, and the sum of their points
 const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id === id)).filter(Boolean);
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
@@ -92,7 +93,7 @@ const ptsIn = (...texts) => { const m = texts.join(" ").match(/(\d{1,4})\s*(?:pt
 const seqOf = (w) => typeof w.seq === "number" ? w.seq : Date.parse(w.created || 0) || 0;
 const wpOrder = (a, b) => ((stageKey(a) === "") - (stageKey(b) === "")) || natural(stageKey(a), stageKey(b)) || (orderKey(a) - orderKey(b)) || (seqOf(a) - seqOf(b)) || natural(a.name, b.name);
 // table filters: stage, text, WP number range; the per-row tick decides what goes to the map
-const filt = { text: "", from: null, to: null, tracks: true, trk: "", rec: null, only: null, off: new Set(), ptsOff: new Set() };
+const filt = { text: "", from: null, to: null, tracks: true, trk: "", rec: null, only: null, follow: null, off: new Set(), ptsOff: new Set() };
 const ptsKey = (w) => w.pts ? String(w.pts) : "sin";
 const textOf = (w) => [w.name, w.page && "pág " + w.page, w.desc].filter(Boolean).join(" ").toLowerCase();
 const visibleWps = () => rallyWps().filter((w) => {
@@ -376,7 +377,7 @@ $("fYear").onchange = (e) => {
 $("allStages").onclick = () => pickStage("all");
 // step 2's stage number, its chips and the table's stage filter always show the same stage
 function pickStage(k) {
-  state.stageFilter = k; state.hi = null;
+  state.stageFilter = k; state.hi = null; filt.follow = null;
   $("stageNo").value = k === "all" ? "" : k;
   render();
 }
@@ -893,6 +894,14 @@ function followRoutes() {
   rallyTracks().filter((t) => stageKey(t) === st && t.kind === "grabada").forEach((t) => out.push({ key: "t" + t.id, name: "⏺ " + t.name, segs: t.segs }));
   return out;
 }
+$("followSel").addEventListener("change", (e) => {
+  const k = e.target.value, r = followRoutes().find((x) => x.key === k);
+  if (!r) { filt.follow = null; render(); return; }
+  if (k[0] === "p") { plan.sel = +k.slice(1); filt.follow = ""; } else { filt.follow = k.slice(1); plan.sel = null; }
+  filt.tracks = true; $("fTracks").checked = true;
+  render(); renderPlan();
+  if (lmap) lmap.fitBounds(r.segs.flat(), { padding: [30, 30] });
+});
 function renderFollow() {
   const sel = $("followSel"); if (!sel || sel.disabled) return;
   const list = followRoutes(), was = sel.value; sel.textContent = "";

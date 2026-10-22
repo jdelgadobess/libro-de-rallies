@@ -398,7 +398,13 @@ const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPl
 $("fStage").onchange = (e) => pickStage(e.target.value);
 // deletes the route picked in «Seguir ruta» (a track, a recording or a planner's proposal), after asking
 $("mDel").onclick = async () => {
-  const k = $("followSel").value, r = followRoutes().find((x) => x.key === k);
+  // the route chosen in «Seguir ruta», or else the only route on the map (it may come from another stage or have none)
+  let k = $("followSel").value, r = followRoutes().find((x) => x.key === k);
+  if (!r) {
+    const shown = visibleTracks().map((t) => ({ key: "t" + t.id, name: (t.kind === "grabada" ? "⏺ " : "") + t.name }));
+    if (plan.stage === state.stageFilter && plan.sel !== null && plan.alts[plan.sel]) shown.push({ key: "p" + plan.sel, name: `Propuesta ${plan.sel + 1}: ${plan.alts[plan.sel].name}` });
+    if (shown.length === 1) { r = shown[0]; k = r.key; }
+  }
   if (!r) { showNotice(state.stageFilter === "all" ? "Elige primero la etapa." : "Elige en «Seguir ruta» la ruta que quieres eliminar."); return; }
   if (!confirm(`¿Seguro que quieres eliminar «${r.name}»? No se puede deshacer.`)) return;
   try {
@@ -443,7 +449,8 @@ $("fYear").onchange = (e) => {
 $("allStages").onclick = () => pickStage("all");
 // step 2's stage number, its chips and the table's stage filter always show the same stage
 function pickStage(k) {
-  state.stageFilter = k; state.hi = null; filt.follow = null;
+  // a route picked in another stage must not stay on this stage's map
+  state.stageFilter = k; state.hi = null; filt.follow = null; filt.trk = ""; filt.only = null; filt.rec = null;
   $("stageNo").value = k === "all" ? "" : k;
   render();
 }
@@ -580,12 +587,14 @@ function renderMap() {
   const joined = drawing ? new Set(drawing.wpAt.filter(Boolean)) : null;
   // a «Seguimiento track» stage shows its track; a waypoint stage, its waypoints (and the routes driven or followed)
   const kind = state.stageFilter !== "all" ? stageKind(state.stageFilter) : "";
-  const byKind = (t) => kind === "seg_track" || t.kind === "grabada" || filt.follow != null || filt.rec === t.id || drawing;
+  const chosen = kind === "caza" ? rallyTracks().filter((t) => stageKey(t) === state.stageFilter && isChosen(t)) : [];
+  const byKind = (t) => kind === "seg_track" || t.kind === "grabada" || filt.follow != null || filt.rec === t.id || drawing || chosen.includes(t);
   const list = kind === "seg_track" && !drawing && !adding ? [] : mapWps().filter((w) => !joined || !$("drawOnly").checked || joined.has(w.id));
   const trks = visibleTracks().filter((t) => !kind || byKind(t));
   const imp = rallyTracks().filter((t) => stageKey(t) === state.stageFilter && t.kind !== "grabada");
   $("scaleTxt").textContent = kind === "seg_track" ? (imp.length ? `${kindLabel(state.stageFilter)}: ${imp.map((t) => `«${t.name}» ${kmOf(t.segs).toFixed(1)} km`).join(", ")}` : `${kindLabel(state.stageFilter)}: esta etapa aún no tiene traza. Impórtala en la pestaña Importar.`)
-    : kind ? `${kindLabel(state.stageFilter)}: ${mapWps().length ? mapWps().length + " waypoints" + (sumPts(mapWps()) ? ` (${sumPts(mapWps())} pts)` : "") : "aún no tiene waypoints. Impórtalos en la pestaña Importar."}`
+    : kind ? `${kindLabel(state.stageFilter)}: ${mapWps().length ? mapWps().length + " waypoints" + (sumPts(mapWps()) ? ` (${sumPts(mapWps())} pts)` : "") : "aún no tiene waypoints. Impórtalos en la pestaña Importar."}` +
+      (kind !== "caza" ? "" : chosen.length ? ` · Ruta elegida: «${chosen[0].meta.alt || chosen[0].name}» ${kmOf(chosen[0].segs).toFixed(1)} km` : " · Sin ruta elegida: confírmala en el Planificador.")
     : list.length || trks.length ? "Rutas en amarillo · waypoints en verde" : "Sin waypoints en esta selección";
   if (!list.length && !trks.length) return;
   const pts = list.map((w) => [w.lat, w.lon]);
@@ -596,7 +605,9 @@ function renderMap() {
     seg.forEach((p) => pts.push(p));
   }));
   // the stage's proposals show on every tab and every device: they are kept in the database
-  if (plan.stage === state.stageFilter) plan.alts.forEach((a, i) => {
+  // once one is confirmed, the Libro de ruta shows only that one (unless a proposal is picked in «Seguir ruta»)
+  const showAlts = state.tab === "plan" || !chosen.length || filt.follow === "";
+  if (showAlts && plan.stage === state.stageFilter && isCaza(state.stageFilter)) plan.alts.forEach((a, i) => {
     const on = plan.sel === i;
     if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
     L.polyline(a.pts, { color: altCol(i), weight: on ? 5 : 3, opacity: on ? 1 : .75, dashArray: on ? null : "6 6" })
@@ -1075,13 +1086,14 @@ function renderTracks() {
   });
 }
 
-async function saveTrack(name, segs, msgEl, wps = []) {
+async function saveTrack(name, segs, msgEl, wps = [], meta = null) {
   const st = currentStage();
   if (!st) { msgEl.textContent = "Pon primero el nº de etapa en el paso 2."; $("stageNo").classList.add("need"); $("stageNo").focus(); return false; }
   try {
     await ensureRally();
     const row = { rally_id: state.rallyId, stage: st, name, points: segs, created_by: state.user.email };
     if (wps.length) row.wps = wps.map((w) => w.id);
+    if (meta) row.meta = meta;
     must(await sb.from("tracks").insert(row));
     await loadAll();
     msgEl.textContent = `Guardado «${name}» (${kmOf(segs).toFixed(1)} km` + (wps.length ? `, ${wps.length} WP, ${sumPts(wps)} pts` : "") + `) como track de la etapa ${st}. Sale en el mapa y en el GPX de la etapa.`;
@@ -1090,6 +1102,8 @@ async function saveTrack(name, segs, msgEl, wps = []) {
 }
 
 /* ---------- route planner (its own tab) ---------- */
+// the proposal confirmed in the planner for a «Caza waypoint» stage
+const isChosen = (t) => !!(t.meta && t.meta.chosen);
 const plan = { alts: [], sel: null, graph: null, graphKey: "", busy: false };
 let mec = null, coches = null;
 function setTab(t) {
@@ -1217,14 +1231,14 @@ function renderOwn() {
   });
 }
 function renderPlan() {
-  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; loadPlan(); }
+  if (plan.stage !== state.stageFilter) { plan.alts = []; plan.sel = null; plan.stage = state.stageFilter; $("pMsg").textContent = ""; altNote = ""; altArmed = null; loadPlan(); }
   if (state.tab !== "plan") return;
   renderOwn();
   const wps = mapWps();
   $("pScope").textContent = state.stageFilter === "all"
     ? "Elige una etapa en el paso 2."
     : `${stageLabel(state.stageFilter)}${kindLabel(state.stageFilter) ? " · " + kindLabel(state.stageFilter) : ""} · ${wps.length} waypoints marcados` + (sumPts(wps) ? ` (${sumPts(wps)} pts)` : "") + ". Desmarca en la tabla del Libro de ruta los que no quieras tener en cuenta.";
-  $("pRun").disabled = plan.busy || state.stageFilter === "all" || wps.length < 3;
+  $("pRun").disabled = plan.busy || state.stageFilter === "all" || wps.length < 3 || !isCaza(state.stageFilter);
   const ul = $("pAlts"); ul.textContent = "";
   plan.alts.forEach((a, i) => {
     const li = document.createElement("li"); li.className = plan.sel === i ? "on" : "";
@@ -1252,14 +1266,21 @@ function renderPlan() {
   renderAltBar();
 }
 // the proposals as coloured buttons above the map: tap one to see it, tap it again to confirm it
-let altArmed = null;
+let altArmed = null, altNote = "";
 function pickAlt(i) {
-  plan.sel = i; altArmed = i; $("altMsg").textContent = "";
+  plan.sel = i; altArmed = i; altNote = "";
   renderPlan(); renderMap();
   if (lmap && plan.alts[i]) lmap.fitBounds(plan.alts[i].pts, { padding: [30, 30] });
 }
 function renderAltBar() {
-  const box = $("altBtns"); box.textContent = "";
+  const box = $("altBtns"); box.textContent = ""; $("altMsg").textContent = "";
+  if (state.stageFilter !== "all" && !isCaza(state.stageFilter)) {
+    const h = document.createElement("span"); h.className = "hint";
+    h.textContent = `Las propuestas de ruta solo se usan en etapas de Caza waypoint. Esta es de ${kindLabel(state.stageFilter)}.`;
+    box.append(h); return;
+  }
+  const cur = rallyTracks().find((t) => stageKey(t) === state.stageFilter && isChosen(t));
+  $("altMsg").textContent = altNote || (cur ? `Ruta elegida: «${cur.meta.alt || cur.name}».` : "");
   if (!plan.alts.length) {
     const h = document.createElement("span"); h.className = "hint";
     h.textContent = state.stageFilter === "all" ? "Elige la etapa para ver sus propuestas de ruta." : "Aún no hay propuestas: pulsa «Proponer ruta» más abajo.";
@@ -1285,8 +1306,13 @@ async function confirmAlt(i) {
   const a = plan.alts[i]; if (!a || !canEdit()) return;
   if (!confirm(`¿Confirmas la propuesta ${i + 1} (${a.name}, ${a.km.toFixed(1)} km) como la ruta de la etapa ${state.stageFilter}?`)) return;
   altArmed = null;
-  const ok = await saveTrack(`Ruta elegida (propuesta ${i + 1}: ${a.name}) · Etapa ${state.stageFilter}`, [a.pts], $("altMsg"), a.wps);
-  if (ok) $("altMsg").textContent += " La tienes en «Seguir ruta» del Libro de ruta.";
+  // one chosen route per stage: confirming another one replaces it
+  const old = rallyTracks().filter((t) => stageKey(t) === state.stageFilter && isChosen(t));
+  try { for (const t of old) must(await sb.from("tracks").delete().eq("id", t.id)); } catch (e) { altNote = writeErr(e); renderAltBar(); return; }
+  const nm = `Propuesta ${i + 1}: ${a.name}`;
+  const ok = await saveTrack(nm, [a.pts], $("altMsg"), a.wps, { chosen: true, alt: nm });
+  altNote = ok ? "" : $("altMsg").textContent;
+  if (ok) altNote = `Confirmada «${nm}» como la ruta de la etapa ${state.stageFilter}. Sale en el mapa del Libro de ruta y en «Seguir ruta».`;
   renderAltBar();
 }
 $("pRun").onclick = async () => {

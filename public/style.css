@@ -539,3 +539,4 @@ body:not(.tab-plan) #mapTitle { display: none }
 #earthBox { display: none !important }
 .mapsel label { display: flex; align-items: center; gap: 6px; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
 .mapsel #mDel { padding: 6px 12px; font-size: .85rem }
+.tab-plan #yearBox { display: none !important }

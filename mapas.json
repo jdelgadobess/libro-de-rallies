@@ -1,0 +1,7 @@
+[
+{"id":"marruecos","file":"marruecos.pmtiles","name":"Marruecos","size":267930922,"parts":6},
+{"id":"curvas-marruecos","file":"curvas-marruecos.pmtiles","name":"Curvas de nivel de Marruecos","size":223582781,"parts":5},
+{"id":"espana","file":"espana.pmtiles","name":"España","size":1727301976,"parts":37},
+{"id":"curvas-espana","file":"curvas-espana.pmtiles","name":"Curvas de nivel de España","size":331440336,"parts":8},
+{"id":"pendientes-marruecos","file":"pendientes-marruecos.pmtiles","name":"Pendientes de Marruecos","size":169935518,"parts":4},
+{"id":"pendientes-espana","file":"pendientes-espana.pmtiles","name":"Pendientes de España","size":214724242,"parts":5}]

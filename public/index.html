@@ -407,7 +407,7 @@
 </footer>
 <script type="module" src="app.js"></script>
 <div class="accwrap" id="whereWrap" hidden>
-  <form class="panel accpop" id="whereForm" role="dialog" aria-modal="true" aria-labelledby="whereTitle">
+  <section class="panel accpop" role="dialog" aria-modal="true" aria-labelledby="whereTitle"><form id="whereForm" style="display:grid;gap:12px">
     <h2 id="whereTitle">¿Dónde lo pongo?</h2>
     <p class="hint" id="whereWhat"></p>
     <div class="row2">
@@ -415,7 +415,7 @@
       <label>Nº de etapa <input id="whereStage" type="number" inputmode="numeric" min="0" max="30" required></label>
     </div>
     <div class="btns"><button type="submit" class="hl">Importar aquí</button><button type="button" class="ghost" id="whereNo">Cancelar</button></div>
-  </form>
+  </form></section>
 </div>
 <div class="accwrap" id="accWrap" hidden>
       <section class="panel accpop" id="adminPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">

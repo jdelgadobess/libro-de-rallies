@@ -250,6 +250,8 @@ function render() {
   ralliesSorted().forEach((x) => fy.append(new Option(String(x.year) + (state.rallies.filter((o) => o.year === x.year).length > 1 ? " " + x.name : ""), x.id)));
   if (canEdit()) fy.append(new Option("+ Nuevo año…", "new"));
   fy.value = state.rallyId || "";
+  // the same year next to the stage number (Importar and Planificador)
+  const sy = $("sYear"); sy.textContent = ""; [...fy.options].forEach((o) => sy.append(new Option(o.text, o.value))); sy.value = fy.value;
   $("rallyName").textContent = r ? r.name : "";
   $("rallyDelBox").hidden = !r;
 
@@ -366,6 +368,7 @@ function renderPtsFilter() {
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
 const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
+$("sYear").onchange = (e) => { $("fYear").value = e.target.value; $("fYear").onchange({ target: $("fYear") }); if (e.target.value === "new") e.target.value = state.rallyId || ""; };
 $("fYear").onchange = (e) => {
   if (e.target.value === "new") { e.target.value = state.rallyId || ""; setTab("imp"); openYearForm(); $("yearForm").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
   state.rallyId = e.target.value; state.stageFilter = "all"; state.hi = null; resetDel(); render();

@@ -515,3 +515,5 @@ body:not(.tab-plan) [data-plan] { display: none !important }
 .tab-imp .desk > .col:first-child { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; align-items: start }
 .tab-imp .desk > .col:first-child > [data-imp] { grid-column: span 2 }
 @media (max-width: 880px) { .tab-imp .desk > .col:first-child > [data-imp] { grid-column: auto } }
+#sYear.big { font-size: 1.3rem; font-weight: 700; padding: 6px 10px; width: auto }
+.stagebar { flex-wrap: wrap }

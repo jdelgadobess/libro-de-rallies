@@ -180,6 +180,7 @@
           <button type="button" class="ghost" id="clearPhotos" hidden>Quitar fotos</button>
         </div>
         <p class="msg" id="photoMsg" data-edit></p>
+        <div class="btns" id="photoGpxBox" hidden><button type="button" class="hl" id="photoGpx">⬇ GPX de los puntos de las fotos</button></div>
 
         <div class="drop" id="wptDrop" style="margin-top:12px" data-edit>
           <label class="import wpt" for="gpxFile">Importar waypoints (GPX o KML)</label>
@@ -219,7 +220,7 @@
           <span class="hint">Puedes corregir cualquier casilla. Las coordenadas en rojo no se han leído bien.</span>
           <div class="btns">
             <button type="button" class="ghost" id="revCancel">Descartar</button>
-            <button type="button" class="hl" id="revSave">Guardar los marcados y crear su GPX</button>
+            <button type="button" class="hl" id="revSave">Guardar los corregidos</button>
           </div>
         </div>
       </div>
@@ -227,7 +228,7 @@
       <div class="mapbox">
         <div class="boxhead">
           <h2 id="mapTitle">Mapa</h2>
-          <span class="mapsel" data-libro><label>Año <select id="mYear"></select></label><label>Etapa <select id="mStage"></select></label><label>Tipo <select id="mKind"><option value="">—</option><option value="seg_track">Seguimiento track</option><option value="seg_wp">Seguimiento waypoint</option><option value="caza">Caza waypoint</option></select></label><button type="button" class="ghost" id="mDel" data-edit>🗑 Eliminar ruta</button></span>
+          <span class="mapsel" data-libro><label>Año <select id="mYear"></select></label><label>Etapa <select id="mStage"></select></label><label>Tipo <select id="mKind"><option value="">—</option><option value="seg_track">Seguimiento track</option><option value="seg_wp">Seguimiento waypoint</option><option value="caza">Caza waypoint</option></select></label><button type="button" class="ghost" id="mDel" data-edit>🗑 Eliminar ruta</button><button type="button" class="ghost" id="mStageDel" data-edit>🗑 Eliminar etapa</button></span>
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
           <label class="offtoggle" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"><span>📴 Trabajar sin conexión</span></label>
           <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
@@ -295,7 +296,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 90</span>
+          <span class="msg ver">Versión 92</span>
         </div>
         </details>
         </div>

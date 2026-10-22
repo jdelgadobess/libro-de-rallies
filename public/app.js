@@ -821,18 +821,56 @@ async function readPhotos() {
       desc: [o.box ? "Casilla " + o.box : "", o.km ? "km " + o.km : "", o.note || "", o.dudoso ? "revisar con la foto" : ""].filter(Boolean).join(", "), doubt: !!o.dudoso,
       pts: parseInt(o.puntos, 10) || ptsIn(o.note || ""),
     }));
-    // everything read waits in the table: tick the waypoints wanted, then save them to a stage and get their GPX
+    // the points read well go straight to the stage asked for; the ones read badly wait in the table to be corrected
     const isOk = (x) => x.name && parseCoord(x.latRaw, true) !== null && parseCoord(x.lonRaw, false) !== null;
     rows.forEach((x) => { x.on = isOk(x); });
-    state.pending = rows;
+    const good = rows.filter(isOk), bad = rows.filter((x) => !isOk(x));
     $("photos").value = ""; setPhotos([]);
-    const bad = rows.filter((x) => !isOk(x)).length;
-    msg.textContent = `Leídos ${rows.length} waypoints. Marca en la tabla los que quieres y pulsa «Guardar los marcados y crear su GPX».` + (bad ? ` ${bad > 1 ? bad + " no se leyeron bien" : "Uno no se leyó bien"}: corrígelo o déjalo sin marcar.` : "");
+    const where = good.length ? await askWhere(`${good.length} waypoint${good.length > 1 ? "s" : ""} leído${good.length > 1 ? "s" : ""} de las fotos.`) : null;
+    if (!where) {
+      state.pending = rows;
+      msg.textContent = `Leídos ${rows.length} waypoints. Revisa la tabla y pulsa «Guardar los corregidos».`;
+    } else {
+      try {
+        const res = await saveRows(good);
+        state.pending = bad.length ? bad : null;
+        photoPts(where.stage, good);
+        msg.textContent = `Guardados ${res.added} waypoints en la etapa ${where.stage}` + (res.skipped ? ` (${res.skipped} ya existían)` : "") + "." +
+          (bad.length ? ` ${bad.length > 1 ? bad.length + " no se leyeron bien" : "Uno no se leyó bien"}: corrígelo en la tabla y pulsa «Guardar los corregidos».` : "");
+        if (!bad.length) { render(); goStage(where.stage); return; }
+      } catch (e) { state.pending = rows; msg.textContent = writeErr(e); }
+    }
   } else if (!failed) msg.textContent = "No encontré waypoints con coordenadas en las fotos.";
   $("readBtn").hidden = !state.photos.length;
   render();
   if (state.pending) $("review").scrollIntoView({ behavior: "smooth", block: "start" });
   else if (found.length) $("wpBody").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+// the waypoints of the last photos, ready to export as one GPX from the Importar tab
+function photoPts(st, rows, add = false) {
+  const names = rows.map((x) => x.name.trim());
+  const prev = add ? state.photoPts.names : [];
+  state.photoPts = { stage: st, rallyId: state.rallyId, names: [...new Set([...prev, ...names])] };
+  $("photoGpxBox").hidden = false;
+  $("photoGpx").textContent = `⬇ GPX de los ${state.photoPts.names.length} puntos de las fotos (etapa ${st})`;
+}
+$("photoGpx").onclick = () => {
+  const p = state.photoPts; if (!p) return;
+  const r = state.rallies.find((x) => x.id === p.rallyId) || rally();
+  const list = p.names.map((n) => state.wps.find((w) => w.rallyId === p.rallyId && stageKey(w) === p.stage && String(w.name) === n)).filter(Boolean);
+  if (!list.length) { $("photoMsg").textContent = "Esos puntos ya no están en la etapa."; return; }
+  download(stageFile(p.stage) + "_fotos.gpx", buildGpx(list, r.year + " " + r.name + " · " + stageLabel(p.stage), []), "application/gpx+xml");
+};
+// after saving the photos' points: the Libro de ruta of that stage, asking for its type if it has none
+function goStage(st) {
+  setTab("libro"); pickStage(st);
+  const pts = mapWps().map((w) => [w.lat, w.lon]);
+  setTimeout(() => { if (lmap && pts.length) lmap.fitBounds(pts, { padding: [30, 30] }); }, 150);
+  if (!stageKind(st)) {
+    showNotice(`Puntos de las fotos guardados en la etapa ${st}. Elige ahora arriba del mapa el tipo de etapa.`);
+    $("mKind").classList.add("need"); $("mKind").scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => $("mKind").classList.remove("need"), 6000);
+  } else showNotice(`Puntos de las fotos guardados en la etapa ${st} (${kindLabel(st)}).`);
 }
 async function saveRows(rows) {
   const st = currentStage(), r = rally();
@@ -879,16 +917,18 @@ $("revSave").onclick = async () => {
   if (!rows.length) { $("photoMsg").textContent = "Marca en la tabla los waypoints que quieres guardar."; return; }
   const bad = rows.filter((x) => parseCoord(x.latRaw, true) === null || parseCoord(x.lonRaw, false) === null || !x.name.trim());
   if (bad.length) { $("photoMsg").textContent = `Hay ${bad.length} fila(s) marcadas sin nombre o con coordenadas no válidas. Corrígelas o desmárcalas.`; return; }
-  const where = await askWhere(`${rows.length} waypoint${rows.length > 1 ? "s" : ""} de las fotos.`); if (!where) return;
+  // the corrected ones go to the stage the rest of the photos went to; otherwise ask
+  const pp = state.photoPts && state.photoPts.rallyId === state.rallyId ? state.photoPts : null;
+  if (pp) { state.stageFilter = pp.stage; $("stageNo").value = pp.stage; }
+  const where = pp ? { stage: pp.stage } : await askWhere(`${rows.length} waypoint${rows.length > 1 ? "s" : ""} de las fotos.`); if (!where) return;
   const st = where.stage;
   $("revSave").disabled = true;
   try {
     const res = await saveRows(rows);
     state.pending = null;
-    // the GPX of exactly those waypoints, in the order of the table
-    const names = rows.map((x) => x.name.trim()), list = names.map((n) => rallyWps().find((w) => stageKey(w) === st && String(w.name) === n)).filter(Boolean);
-    if (list.length) download(stageFile(st) + "_fotos.gpx", buildGpx(list, rally().year + " " + rally().name + " · " + stageLabel(st), []), "application/gpx+xml");
-    $("photoMsg").textContent = `Guardados ${res.added} waypoints en la etapa ${st}` + (res.skipped ? `; ${res.skipped} ya existían y no se duplicaron` : "") + `. Descargado ${stageFile(st)}_fotos.gpx con ${list.length}.`;
+    photoPts(st, rows, state.photoPts && state.photoPts.stage === st);
+    $("photoMsg").textContent = `Guardados ${res.added} waypoints en la etapa ${st}` + (res.skipped ? `; ${res.skipped} ya existían y no se duplicaron` : "") + ".";
+    $("revSave").disabled = false; render(); goStage(st); return;
   } catch (e) { $("photoMsg").textContent = writeErr(e); }
   $("revSave").disabled = false; render();
 };
@@ -982,6 +1022,23 @@ $("stageDel").onclick = async () => {
     await loadAll();
   } catch (e) { sd.textContent = writeErr(e); }
   sd.disabled = false; delete sd.dataset.armed; sd.dataset.stage = "";
+};
+// deletes the whole stage from the Libro de ruta: waypoints, routes, proposals and its type
+$("mStageDel").onclick = async () => {
+  const st = state.stageFilter; if (st === "all" || st === "") { showNotice("Elige primero la etapa que quieres eliminar."); return; }
+  const nW = rallyWps().filter((w) => stageKey(w) === st).length, nT = rallyTracks().filter((t) => stageKey(t) === st).length;
+  if (!confirm(`¿Seguro que quieres eliminar la etapa ${st} de ${rally().year}? Se borran ${nW} waypoint${nW === 1 ? "" : "s"}, ${nT} ruta${nT === 1 ? "" : "s"} y sus propuestas. No se puede deshacer.`)) return;
+  try {
+    must(await sb.from("tracks").delete().eq("rally_id", state.rallyId).eq("stage", st));
+    must(await sb.from("waypoints").delete().eq("rally_id", state.rallyId).eq("stage", st));
+    must(await sb.from("plans").delete().eq("rally_id", state.rallyId).eq("stage", st)); idb.del("kv", planKey()).catch(() => {});
+    try { must(await sb.from("stages").delete().eq("rally_id", state.rallyId).eq("stage", st)); } catch (e) {}
+    state.stages = (state.stages || []).filter((x) => !(x.rallyId === state.rallyId && x.stage === st));
+    plan.alts = []; plan.sel = null;
+    state.stageFilter = "all"; $("stageNo").value = ""; filt.trk = ""; filt.only = null; filt.rec = null; filt.follow = null;
+    await loadAll();
+    showNotice(`Etapa ${st} eliminada.`);
+  } catch (e) { showNotice(writeErr(e)); }
 };
 // the routes driven with the phone's GPS, newest first
 // recordings always go to a stage that already has waypoints: the one being viewed, or the one picked here

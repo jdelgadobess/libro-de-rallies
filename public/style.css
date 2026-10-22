@@ -560,3 +560,4 @@ body:not(.tab-plan) #mapTitle { display: none }
 .mapfloat button.ok { background: #1e9e3e; border-color: #1e9e3e; color: #fff }
 .mapfloat button:disabled { opacity: .4 }
 .mapfloat button[hidden] { display: none }
+#mKind.need { outline: 3px solid var(--saffron); outline-offset: 2px; animation: pulse 1s ease-in-out 3 }

@@ -405,7 +405,7 @@ $("mDel").onclick = async () => {
     if (plan.stage === state.stageFilter && plan.sel !== null && plan.alts[plan.sel]) shown.push({ key: "p" + plan.sel, name: `Propuesta ${plan.sel + 1}: ${plan.alts[plan.sel].name}` });
     if (shown.length === 1) { r = shown[0]; k = r.key; }
   }
-  if (!r) { showNotice(state.stageFilter === "all" ? "Elige primero la etapa." : "Elige en «Seguir ruta» la ruta que quieres eliminar."); return; }
+  if (!r) { showNotice(state.stageFilter === "all" ? "Elige primero la etapa." : "Esta etapa no tiene ninguna ruta que eliminar."); return; }
   if (!confirm(`¿Seguro que quieres eliminar «${r.name}»? No se puede deshacer.`)) return;
   try {
     if (k[0] === "p") {
@@ -1309,6 +1309,31 @@ function renderAltBar() {
     c.onclick = () => confirmAlt(plan.sel);
     box.append(c);
   }
+  if (canEdit()) {
+    if (plan.sel !== null && plan.alts[plan.sel]) {
+      const d = document.createElement("button"); d.type = "button"; d.className = "ghost"; d.id = "altDel";
+      d.textContent = `🗑 Eliminar la ${plan.alts[plan.sel].own ? plan.alts[plan.sel].name.toLowerCase() : "propuesta " + (plan.sel + 1)}`;
+      d.onclick = () => delAlts([plan.sel]);
+      box.append(d);
+    }
+    if (plan.alts.length > 1) {
+      const all = document.createElement("button"); all.type = "button"; all.className = "ghost"; all.id = "altDelAll";
+      all.textContent = "🗑 Eliminar todas"; all.onclick = () => delAlts(plan.alts.map((a, i) => i));
+      box.append(all);
+    }
+  }
+}
+// removes proposals of the stage (the route already confirmed stays)
+async function delAlts(idx) {
+  const what = idx.length > 1 ? `las ${idx.length} propuestas de la etapa ${state.stageFilter}` : `«${plan.alts[idx[0]].name}»`;
+  if (!confirm(`¿Seguro que quieres eliminar ${what}? No se puede deshacer.`)) return;
+  plan.alts = plan.alts.filter((a, i) => !idx.includes(i)); plan.sel = null; altArmed = null;
+  try {
+    if (plan.alts.length) await savePlan($("pMsg").textContent);
+    else { must(await sb.from("plans").delete().eq("rally_id", state.rallyId).eq("stage", state.stageFilter)); idb.del("kv", planKey()).catch(() => {}); $("pMsg").textContent = ""; }
+    altNote = idx.length > 1 ? "Propuestas eliminadas." : "Propuesta eliminada.";
+  } catch (e) { altNote = writeErr(e); }
+  renderPlan(); renderMap(); renderFollow();
 }
 async function confirmAlt(i) {
   const a = plan.alts[i]; if (!a || !canEdit()) return;
@@ -1320,7 +1345,7 @@ async function confirmAlt(i) {
   const nm = a.own ? a.name : `Propuesta ${i + 1}: ${a.name}`;
   const ok = await saveTrack(nm, [a.pts], $("altMsg"), a.wps, { chosen: true, alt: nm });
   altNote = ok ? "" : $("altMsg").textContent;
-  if (ok) altNote = `Confirmada «${nm}» como la ruta de la etapa ${state.stageFilter}. Sale en el mapa del Libro de ruta y en «Seguir ruta».`;
+  if (ok) altNote = `Confirmada «${nm}» como la ruta de la etapa ${state.stageFilter}. Sale en el mapa del Libro de ruta y es la que sigue «Iniciar ruta».`;
   renderAltBar();
 }
 $("pRun").onclick = async () => {

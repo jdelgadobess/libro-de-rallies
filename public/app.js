@@ -1360,19 +1360,19 @@ function updateParsed() {
   const la = parseCoord($("wLat").value, true), lo = parseCoord($("wLon").value, false), p = $("wParsed");
   if (!$("wLat").value && !$("wLon").value) { p.textContent = ""; p.className = "parsed"; return; }
   if (la === null || lo === null) { p.textContent = (la === null ? "Latitud" : "Longitud") + " no reconocida"; p.className = "parsed bad"; return; }
-  p.className = "parsed"; p.textContent = "= " + la.toFixed(6) + ", " + lo.toFixed(6);
+  p.className = "parsed"; p.textContent = `= ${fmtCoord(la, true, "dms")} ${fmtCoord(lo, false, "dms")} · ${la.toFixed(6)}, ${lo.toFixed(6)}`;
 }
 $("wLat").addEventListener("input", updateParsed); $("wLon").addEventListener("input", updateParsed);
 function startEdit(w) {
-  $("moreWays").hidden = false; $("moreWays").open = true; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
+  setTab("plan"); $("wpTitle").textContent = "Editar waypoint " + w.name; $("stageNo").value = stageKey(w); state.stageFilter = stageKey(w) || "all"; render();
   $("wEditing").value = w.id; $("wName").value = w.name; $("wPage").value = w.page || ""; $("wDesc").value = w.desc || ""; $("wPts").value = w.pts || "";
-  $("wLat").value = fmtCoord(w.lat, true, "dm"); $("wLon").value = fmtCoord(w.lon, false, "dm");
+  $("wLat").value = fmtCoord(w.lat, true, "dms"); $("wLon").value = fmtCoord(w.lon, false, "dms");
   $("wCancel").hidden = false; $("wSave").textContent = "Guardar cambios"; updateParsed();
   $("wpForm").scrollIntoView({ behavior: "smooth", block: "center" }); $("wName").focus({ preventScroll: true });
 }
 function clearWp() {
   ["wEditing", "wName", "wPage", "wDesc", "wLat", "wLon", "wPts"].forEach((i) => $(i).value = "");
-  $("wCancel").hidden = true; $("wSave").textContent = "Guardar waypoint"; updateParsed(); $("moreWays").hidden = true;
+  $("wCancel").hidden = true; $("wSave").textContent = "Guardar waypoint"; updateParsed(); $("wpTitle").textContent = "Waypoint a mano";
 }
 $("wCancel").onclick = clearWp;
 // «Dar acceso» opens over the page from the bar with Contraseña and Salir

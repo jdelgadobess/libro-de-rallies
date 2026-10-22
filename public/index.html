@@ -112,6 +112,28 @@
         </div>
       </section>
 
+      <section class="panel" id="moreWays" data-plan data-edit>
+        <h2 id="wpTitle">Waypoint a mano</h2>
+        <form id="wpForm">
+          <input type="hidden" id="wEditing">
+          <div class="row2">
+            <label>Nombre <input id="wName" type="text" placeholder="WP29" required></label>
+            <label>Pág. roadbook <input id="wPage" type="text" placeholder="23"></label>
+          </div>
+          <label>Latitud <input id="wLat" class="coord" type="text" placeholder="30°42'30.2&quot;N" required autocomplete="off"></label>
+          <label>Longitud <input id="wLon" class="coord" type="text" placeholder="4°28'20.2&quot;W" required autocomplete="off"></label>
+          <p class="hint">Grados, minutos y segundos (30°42'30"N), o grados y minutos (30°42.503'N), o decimal (30.708389). Sin el símbolo ° vale con espacios: 30 42 30 N. Para oeste pon W, O o un signo menos.</p>
+          <p class="parsed" id="wParsed"></p>
+          <label>Descripción <input id="wDesc" type="text" placeholder="Casilla 112, km 124,71"></label>
+          <label>Puntos <input id="wPts" type="number" inputmode="numeric" min="1" placeholder="25"></label>
+          <div class="btns">
+            <button type="submit" id="wSave">Guardar waypoint</button>
+            <button type="button" class="ghost" id="wCancel" hidden>Cancelar edición</button>
+          </div>
+          <p class="msg" id="wMsg"></p>
+        </form>
+      </section>
+
       <section class="panel plan" id="planPanel">
         <h2>Planificador de rutas</h2>
         <p class="hint" id="pScope"></p>
@@ -167,26 +189,6 @@
         </div>
         <p class="msg" id="mapImpMsg"></p>
 
-        <details id="moreWays" data-edit hidden>
-          <summary>Editar waypoint</summary>
-          <form id="wpForm">
-            <input type="hidden" id="wEditing">
-            <div class="row2">
-              <label>Nombre <input id="wName" type="text" placeholder="WP29" required></label>
-              <label>Pág. roadbook <input id="wPage" type="text" placeholder="23"></label>
-            </div>
-            <label>Latitud <input id="wLat" class="coord" type="text" placeholder="30°42.503'N" required autocomplete="off"></label>
-            <label>Longitud <input id="wLon" class="coord" type="text" placeholder="4°28.337'W" required autocomplete="off"></label>
-            <p class="parsed" id="wParsed"></p>
-            <label>Descripción <input id="wDesc" type="text" placeholder="Casilla 112, km 124,71"></label>
-            <label>Puntos <input id="wPts" type="number" inputmode="numeric" min="1" placeholder="25"></label>
-            <div class="btns">
-              <button type="submit" id="wSave">Guardar waypoint</button>
-              <button type="button" class="ghost" id="wCancel" hidden>Cancelar edición</button>
-            </div>
-            <p class="msg" id="wMsg"></p>
-          </form>
-        </details>
       </section>
 
     </div>
@@ -271,7 +273,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 68</span>
+          <span class="msg ver">Versión 69</span>
         </div>
         </div>
         <div class="gmap" id="gmap"></div>

@@ -155,7 +155,7 @@
           <label>Coger de paso los WP a menos de (km) <input id="pNear" type="number" min="0" max="10" step="0.5" value="1"></label>
         </div>
         <label class="chk"><input type="checkbox" id="pPaths" checked> Usar también senderos y caminos pequeños</label>
-        <div class="btns"><button type="button" class="hl" id="pRun">Proponer ruta</button><button type="button" class="ghost" id="pDraw" data-edit>✏️ Dibujar mi ruta entre puntos</button></div>
+        <div class="btns"><button type="button" class="hl" id="pRun">Proponer ruta</button><button type="button" class="ghost" id="pDraw" data-edit>✏️ Proponer ruta alternativa (la dibujo yo)</button></div>
         <p class="msg" id="pMsg"></p>
         <ul class="alts" id="pAlts"></ul>
         <div class="own" id="pOwnBox" hidden>
@@ -256,6 +256,7 @@
           <span id="drawTools" hidden>
             <button type="button" class="ghost" id="drawAll">Unir los WP en orden</button>
             <button type="button" class="ghost" id="drawUndo" title="También con Cmd+Z o la tecla de borrar">↶ Deshacer</button>
+            <button type="button" class="hl" id="drawAlt" hidden>✓ Terminar</button>
             <button type="button" class="hl" id="drawSave">Guardar como track</button>
             <button type="button" class="ghost" id="drawGpx">Exportar GPX</button>
             <button type="button" class="ghost" id="drawCancel">Cancelar</button>
@@ -293,7 +294,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 85</span>
+          <span class="msg ver">Versión 86</span>
         </div>
         </details>
         </div>

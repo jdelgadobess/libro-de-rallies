@@ -1297,19 +1297,19 @@ function renderAltBar() {
   });
   if (plan.sel !== null && altArmed === plan.sel && canEdit()) {
     const c = document.createElement("button"); c.type = "button"; c.className = "hl"; c.id = "altOk";
-    c.textContent = `✓ Confirmar la propuesta ${plan.sel + 1}`;
+    c.textContent = plan.alts[plan.sel].own ? `✓ Confirmar la ${plan.alts[plan.sel].name.toLowerCase()}` : `✓ Confirmar la propuesta ${plan.sel + 1}`;
     c.onclick = () => confirmAlt(plan.sel);
     box.append(c);
   }
 }
 async function confirmAlt(i) {
   const a = plan.alts[i]; if (!a || !canEdit()) return;
-  if (!confirm(`¿Confirmas la propuesta ${i + 1} (${a.name}, ${a.km.toFixed(1)} km) como la ruta de la etapa ${state.stageFilter}?`)) return;
+  if (!confirm(`¿Confirmas ${a.own ? "la " + a.name.toLowerCase() : `la propuesta ${i + 1}`} (${a.name}, ${a.km.toFixed(1)} km) como la ruta de la etapa ${state.stageFilter}?`)) return;
   altArmed = null;
   // one chosen route per stage: confirming another one replaces it
   const old = rallyTracks().filter((t) => stageKey(t) === state.stageFilter && isChosen(t));
   try { for (const t of old) must(await sb.from("tracks").delete().eq("id", t.id)); } catch (e) { altNote = writeErr(e); renderAltBar(); return; }
-  const nm = `Propuesta ${i + 1}: ${a.name}`;
+  const nm = a.own ? a.name : `Propuesta ${i + 1}: ${a.name}`;
   const ok = await saveTrack(nm, [a.pts], $("altMsg"), a.wps, { chosen: true, alt: nm });
   altNote = ok ? "" : $("altMsg").textContent;
   if (ok) altNote = `Confirmada «${nm}» como la ruta de la etapa ${state.stageFilter}. Sale en el mapa del Libro de ruta y en «Seguir ruta».`;
@@ -1322,6 +1322,8 @@ $("pRun").onclick = async () => {
   const st = inStage.filter(isStart).sort(wpOrder)[0], fin = inStage.filter(isFinish).sort(wpOrder).pop();
   const wps = [...new Set([st, ...mapWps().filter((w) => w !== st && w !== fin), fin].filter(Boolean))];
   if (state.stageFilter === "all" || wps.length < 3) return;
+  // the alternatives drawn by hand are kept when the proposals are recalculated
+  const own = plan.alts.filter((a) => a.own);
   plan.busy = true; plan.alts = []; plan.sel = null; renderPlan(); renderMap();
   try {
     msg.textContent = "Abriendo el mapa off-road…";
@@ -1358,13 +1360,13 @@ $("pRun").onclick = async () => {
         if (n && same / n < 0.85) alts.push(mk(p, v, p.name + " · por otras pistas"));
       }
     });
-    plan.alts = alts.map((a) => ({ ...a, color: TRACK })); plan.sel = 0;
+    plan.alts = alts.map((a) => ({ ...a, color: TRACK })).concat(own); plan.sel = 0;
     const far = sn.filter((s) => s.d > 1000).length;
     msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints, de ${st ? st.name + (st.desc ? " (" + st.desc + ")" : "") : wps[0].name + " (no encuentro la SALIDA)"} a ${fin ? fin.name + (fin.desc ? " (" + fin.desc + ")" : "") : wps[wps.length - 1].name + " (no encuentro la LLEGADA)"}.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
     renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
     await satFill(wps, msg);
     await savePlan(msg.textContent);
-  } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); }
+  } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); if (!plan.alts.length) plan.alts = own; }
   finally { plan.busy = false; renderPlan(); }
 };
 
@@ -1421,6 +1423,8 @@ function renderDraw() {
   $("scaleHelp").textContent = on ? "Toca el mapa para añadir puntos; toca un waypoint para pasar justo por él" : "Toca dos waypoints para ver la distancia";
   const jw = on ? drawnWps() : [];
   $("drawInfo").textContent = on ? `${drawing.pts.length} puntos · ${kmOf([drawing.pts]).toFixed(2)} km · ${jw.length} WP unidos · total ${sumPts(jw)} pts` : "";
+  // drawn as an alternative for the planner: «Terminar» adds it next to the proposals
+  const alt = on && !!drawing.alt; $("drawAlt").hidden = !alt; $("drawSave").hidden = alt; $("drawAlt").disabled = !on || drawing.pts.length < 2;
   $("drawSave").disabled = $("drawGpx").disabled = !on || drawing.pts.length < 2; $("drawUndo").disabled = !on || !drawing.hist.length;
 }
 // waypoints joined by the drawn line, once each, in the order they were tapped
@@ -1513,8 +1517,21 @@ $("nsForm").onsubmit = async (e) => {
   if (adding) $("addEnd").click();
   $("addStart").click(); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" });
 };
-$("pDraw").onclick = () => { $("drawStart").click(); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); };
+$("pDraw").onclick = () => {
+  if (state.stageFilter === "all") { $("pMsg").textContent = "Elige primero la etapa."; return; }
+  if (!isCaza(state.stageFilter)) { $("pMsg").textContent = "Las rutas alternativas solo se usan en etapas de Caza waypoint."; return; }
+  $("drawStart").click(); drawing.alt = true; renderDraw(); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); };
 $("drawStart").onclick = () => { drawing = { pts: [], wpAt: [], hist: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
+$("drawAlt").onclick = async () => {
+  if (!drawing || drawing.pts.length < 2) return;
+  const wps = drawnWps(), n = plan.alts.filter((a) => a.own).length + 1;
+  const a = { name: "Ruta alternativa" + (n > 1 ? " " + n : ""), own: true, km: kmOf([drawing.pts]), of: mapWps().length, extra: 0, sum: sumPts(wps),
+    offKm: 0, satKm: 0, gapKm: 0, gaps: [], sat: [], pts: drawing.pts.slice(), wps, ids: new Set(wps.map((w) => w.id)) };
+  plan.stage = state.stageFilter; plan.alts.push(a);
+  drawing = null; renderDraw();
+  await savePlan($("pMsg").textContent);
+  pickAlt(plan.alts.length - 1);
+};
 $("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
 $("drawUndo").onclick = drawUndo;
 $("drawAll").onclick = () => { drawStep(); const l = mapWps(); drawing.pts = l.map((w) => [w.lat, w.lon]); drawing.wpAt = l.map((w) => w.id); renderDraw(); renderMap(); };

@@ -1292,6 +1292,7 @@ function renderAltBar() {
   if (!plan.alts.length) {
     const h = document.createElement("span"); h.className = "hint";
     h.textContent = state.stageFilter === "all" ? "Elige la etapa para ver sus propuestas de ruta." : "Aún no hay propuestas: pulsa «Proponer ruta» más abajo.";
+    $("altMsg").textContent = altNote;
     box.append(h); return;
   }
   plan.alts.forEach((a, i) => {
@@ -1316,22 +1317,25 @@ function renderAltBar() {
       d.onclick = () => delAlts([plan.sel]);
       box.append(d);
     }
-    if (plan.alts.length > 1) {
+    if (plan.alts.length > 1 || (plan.alts.length && cur)) {
       const all = document.createElement("button"); all.type = "button"; all.className = "ghost"; all.id = "altDelAll";
-      all.textContent = "🗑 Eliminar todas"; all.onclick = () => delAlts(plan.alts.map((a, i) => i));
+      all.textContent = "🗑 Eliminar todas"; all.onclick = () => delAlts(plan.alts.map((a, i) => i), true);
       box.append(all);
     }
   }
 }
-// removes proposals of the stage (the route already confirmed stays)
-async function delAlts(idx) {
-  const what = idx.length > 1 ? `las ${idx.length} propuestas de la etapa ${state.stageFilter}` : `«${plan.alts[idx[0]].name}»`;
+// removes proposals of the stage; «Eliminar todas» also removes the route confirmed from them
+async function delAlts(idx, all = false) {
+  const chosen = all ? rallyTracks().filter((t) => stageKey(t) === state.stageFilter && isChosen(t)) : [];
+  const what = all ? `todas las propuestas de la etapa ${state.stageFilter}, también las que dibujaste${chosen.length ? " y la ruta confirmada" : ""}` : `«${plan.alts[idx[0]].name}»`;
   if (!confirm(`¿Seguro que quieres eliminar ${what}? No se puede deshacer.`)) return;
   plan.alts = plan.alts.filter((a, i) => !idx.includes(i)); plan.sel = null; altArmed = null;
   try {
     if (plan.alts.length) await savePlan($("pMsg").textContent);
     else { must(await sb.from("plans").delete().eq("rally_id", state.rallyId).eq("stage", state.stageFilter)); idb.del("kv", planKey()).catch(() => {}); $("pMsg").textContent = ""; }
-    altNote = idx.length > 1 ? "Propuestas eliminadas." : "Propuesta eliminada.";
+    for (const t of chosen) must(await sb.from("tracks").delete().eq("id", t.id));
+    if (chosen.length) await loadAll();
+    altNote = all ? (chosen.length ? "Propuestas y ruta confirmada eliminadas." : "Propuestas eliminadas.") : "Propuesta eliminada.";
   } catch (e) { altNote = writeErr(e); }
   renderPlan(); renderMap(); renderFollow();
 }

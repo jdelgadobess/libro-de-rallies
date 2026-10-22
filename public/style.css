@@ -553,3 +553,4 @@ body:not(.tab-plan) #mapTitle { display: none }
 .altbtn .sw { width: 18px; height: 5px; border-radius: 3px; background: var(--c) }
 .altbtn.on { background: var(--c); color: #fff }
 .altbtn.on .sw { background: #fff }
+.followbar[hidden] { display: none !important }

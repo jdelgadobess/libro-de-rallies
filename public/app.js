@@ -990,7 +990,8 @@ function renderRecStage() {
 function followRoutes() {
   const st = state.stageFilter !== "all" ? state.stageFilter : null;
   if (st === null || st === "") return [];
-  const out = rallyTracks().filter((t) => stageKey(t) === st && t.kind !== "grabada").map((t) => ({ key: "t" + t.id, name: t.name, segs: t.segs }));
+  // the stage's own route first: it is the one «Iniciar ruta» follows
+  const out = rallyTracks().filter((t) => stageKey(t) === st && t.kind !== "grabada").sort((a, b) => isChosen(b) - isChosen(a)).map((t) => ({ key: "t" + t.id, name: t.name, segs: t.segs }));
   if (plan.stage === st) plan.alts.forEach((a, i) => out.push({ key: "p" + i, name: `Propuesta ${i + 1}: ${a.name}`, segs: [a.pts] }));
   rallyTracks().filter((t) => stageKey(t) === st && t.kind === "grabada").forEach((t) => out.push({ key: "t" + t.id, name: "⏺ " + t.name, segs: t.segs }));
   return out;
@@ -1008,7 +1009,7 @@ function renderFollow() {
   const list = followRoutes(), was = sel.value; sel.textContent = "";
   if (!list.length) sel.append(new Option(state.stageFilter === "all" ? "Elige la etapa" : "Esta etapa no tiene rutas", ""));
   list.forEach((r) => sel.append(new Option(r.name, r.key)));
-  sel.value = list.some((r) => r.key === was) ? was : list.length ? list[0].key : "";
+  sel.value = list.length ? list[0].key : ""; void was;
   $("followBtn").disabled = !list.length && !sel.disabled;
 }
 function renderRecorded() {

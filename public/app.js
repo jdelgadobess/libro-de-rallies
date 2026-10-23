@@ -1026,18 +1026,23 @@ $("stageDel").onclick = async () => {
 // deletes the whole stage from the Libro de ruta: waypoints, routes, proposals and its type
 $("mStageDel").onclick = async () => {
   const st = state.stageFilter; if (st === "all" || st === "") { showNotice("Elige primero la etapa que quieres eliminar."); return; }
-  const nW = rallyWps().filter((w) => stageKey(w) === st).length, nT = rallyTracks().filter((t) => stageKey(t) === st).length;
-  if (!confirm(`¿Seguro que quieres eliminar la etapa ${st} de ${rally().year}? Se borran ${nW} waypoint${nW === 1 ? "" : "s"}, ${nT} ruta${nT === 1 ? "" : "s"} y sus propuestas. No se puede deshacer.`)) return;
+  // the whole stage of that year, even if the year was created twice (two rallies with the same year)
+  const yr = rally().year, ids = state.rallies.filter((r) => r.year === yr).map((r) => r.id);
+  const wps = state.wps.filter((w) => ids.includes(w.rallyId) && stageKey(w) === st), trs = state.tracks.filter((t) => ids.includes(t.rallyId) && stageKey(t) === st);
+  const nW = wps.length, nT = trs.length;
+  if (!confirm(`¿Seguro que quieres eliminar la etapa ${st} de ${yr}? Se borran ${nW} waypoint${nW === 1 ? "" : "s"}, ${nT} ruta${nT === 1 ? "" : "s"}, sus propuestas y su tipo. No se puede deshacer.`)) return;
   try {
-    must(await sb.from("tracks").delete().eq("rally_id", state.rallyId).eq("stage", st));
-    must(await sb.from("waypoints").delete().eq("rally_id", state.rallyId).eq("stage", st));
-    must(await sb.from("plans").delete().eq("rally_id", state.rallyId).eq("stage", st)); idb.del("kv", planKey()).catch(() => {});
-    try { must(await sb.from("stages").delete().eq("rally_id", state.rallyId).eq("stage", st)); } catch (e) {}
-    state.stages = (state.stages || []).filter((x) => !(x.rallyId === state.rallyId && x.stage === st));
-    plan.alts = []; plan.sel = null;
+    must(await sb.from("tracks").delete().in("rally_id", ids).eq("stage", st));
+    must(await sb.from("waypoints").delete().in("rally_id", ids).eq("stage", st));
+    must(await sb.from("plans").delete().in("rally_id", ids).eq("stage", st)); idb.del("kv", planKey()).catch(() => {});
+    try { must(await sb.from("stages").delete().in("rally_id", ids).eq("stage", st)); } catch (e) {}
+    state.stages = (state.stages || []).filter((x) => !(ids.includes(x.rallyId) && x.stage === st));
+    plan.alts = []; plan.sel = null; plan.stage = null;
     state.stageFilter = "all"; $("stageNo").value = ""; filt.trk = ""; filt.only = null; filt.rec = null; filt.follow = null;
     await loadAll();
-    showNotice(`Etapa ${st} eliminada.`);
+    // check nothing of the stage is left (a delete the database refuses comes back without an error)
+    const left = state.wps.filter((w) => ids.includes(w.rallyId) && stageKey(w) === st).length + state.tracks.filter((t) => ids.includes(t.rallyId) && stageKey(t) === st).length;
+    showNotice(left ? `No se pudo borrar todo: quedan ${left} puntos o rutas de la etapa ${st}. Comprueba que tu cuenta puede editar.` : `Etapa ${st} de ${yr} eliminada: ya no sale en la tabla ni en el mapa.`);
   } catch (e) { showNotice(writeErr(e)); }
 };
 // the routes driven with the phone's GPS, newest first

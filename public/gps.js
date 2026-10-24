@@ -397,7 +397,8 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   // pause: no points are added and the time stops; going on starts a new stretch of the line
   function pauseRec() { if (!rec || rec.paused) return; rec.paused = Date.now(); idb.put("kv", rec, "rec").catch(() => {}); say("Grabación en pausa"); ui(); }
   function resumeRec() { if (!rec || !rec.paused) return; rec.pausedMs = (rec.pausedMs || 0) + Date.now() - rec.paused; rec.paused = null; rec.segs.push([]); idb.put("kv", rec, "rec").catch(() => {}); say("Sigo grabando"); ui(); }
-  function dropRec() { rec = null; clearInterval(startRec.t); idb.del("kv", "rec").catch(() => {}); recLayer.clearLayers(); msg("Grabación descartada.", true); ui(); }
+  // discarding ends the recording too: nothing is kept and the screen may sleep again
+  function dropRec() { rec = null; clearInterval(startRec.t); if (wake) { wake.release().catch(() => {}); wake = null; } idb.del("kv", "rec").catch(() => {}); recLayer.clearLayers(); say("Ruta terminada sin guardar"); msg("Grabación terminada y descartada.", true); ui(); }
   $("rcGo").onclick = () => { audioOn(); if (rec && rec.paused) resumeRec(); else if (!rec && !fol) $("recBtn").click(); };
   $("rcPause").onclick = pauseRec;
   $("rcStop").onclick = () => {

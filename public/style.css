@@ -698,3 +698,8 @@ body.app.tab-plan:not(.mapfull) #stageBox { order: -2 }
 .spdmax input { width: 5.5em; padding: 8px; font-size: 1rem }
 .spdmax small { color: var(--muted) }
 .navbox.hdg.fast { background: rgba(200,20,20,.92) }
+/* measuring several points: the total and the last leg next to the buttons */
+.measure-ctl { flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: calc(100vw - 90px) }
+#measureSum { background: rgba(20,14,8,.85); color: #fff; border-radius: 6px; padding: 8px 10px; font: 700 .9rem var(--mono); box-shadow: 0 1px 4px rgba(0,0,0,.3) }
+#measureSum:empty { display: none }
+.leaflet-container:has(#measureCtl:not([hidden])) .navbox.hdg { top: auto; bottom: 110px }

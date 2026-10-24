@@ -513,8 +513,8 @@ function bearing(a, b) { // initial course from a to b, degrees from north
   const x = Math.cos(a.lat * rad) * Math.sin(b.lat * rad) - Math.sin(a.lat * rad) * Math.cos(b.lat * rad) * Math.cos((b.lon - a.lon) * rad);
   return String(Math.round((Math.atan2(y, x) / rad + 360) % 360) % 360).padStart(3, "0");
 }
-// the next measuring point: with my position as the start it stays the start, so each tap measures from where I am
-const addMeasure = (p) => measure[0] && measure[0].gps ? [measure[0], p] : measure.length === 1 ? [measure[0], p] : [p];
+// each tap adds a point to the measure: distance and course of every leg, and the total ("↶ Atrás" takes the last one off)
+const addMeasure = (p) => { const l = measure[measure.length - 1]; return l && ((p.id && l.id === p.id) || (!p.id && !l.id && l.lat === p.lat && l.lon === p.lon)) ? measure : [...measure, p]; };
 function gpsMeasure(lat, lon) {
   if (measure[0] && measure[0].gps) { measure = []; renderMap(); return false; }
   measure = [{ id: null, gps: true, lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6, name: "Tu posición" }];
@@ -551,7 +551,7 @@ function loadMaps() {
   // big buttons on the map while measuring: go back one point, or start from scratch
   const Clear = L.Control.extend({ options: { position: "topright" }, onAdd() {
     const d = L.DomUtil.create("div", "measure-ctl"); d.id = "measureCtl"; d.hidden = true;
-    d.innerHTML = '<button type="button" id="measureBack">↶ Atrás</button><button type="button" id="measureClear">✕ Borrar medida</button>';
+    d.innerHTML = '<span id="measureSum"></span><button type="button" id="measureBack">↶ Atrás</button><button type="button" id="measureClear">✕ Borrar medida</button>';
     L.DomEvent.disableClickPropagation(d);
     d.querySelector("#measureBack").onclick = () => { measure = measure.slice(0, -1); renderMap(); };
     d.querySelector("#measureClear").onclick = () => { measure = []; state.hi = null; renderTable(); renderMap(); };
@@ -715,8 +715,14 @@ function renderMap() {
     return `${a.name} → ${b.name}: ${fmtKm(d)} en línea recta, rumbo ${cap}°`;
   };
   mm.filter((m) => !m.id && !m.gps).forEach((m) => L.circleMarker([m.lat, m.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer));
-  if (mm.length === 2) $("scaleTxt").textContent = leg(mm[0], mm[1], false) + (mm[0].gps ? " · toca otro punto para medir desde tu posición" : " · toca otro sitio para empezar de nuevo");
-  else if (mm.length === 1) {
+  if ($("measureSum")) $("measureSum").textContent = "";
+  if (mm.length >= 2) {
+    const legs = mm.slice(1).map((b, i) => leg(mm[i], b, false));
+    const total = mm.slice(1).reduce((t, b, i) => t + distKm(mm[i], b), 0);
+    const last = `${fmtKm(distKm(mm[mm.length - 2], mm[mm.length - 1]))} · rumbo ${bearing(mm[mm.length - 2], mm[mm.length - 1])}°`;
+    $("scaleTxt").textContent = (legs.length > 1 ? `${legs.length} tramos · total ${fmtKm(total)} · último tramo: ` : "") + legs[legs.length - 1] + " · toca más puntos para seguir midiendo";
+    if ($("measureSum")) $("measureSum").textContent = legs.length > 1 ? `Total ${fmtKm(total)} · último ${last}` : last;
+  } else if (mm.length === 1) {
     const a = mm[0], i = a.id ? list.findIndex((w) => w.id === a.id) : -1, nx = i >= 0 ? list[i + 1] : null;
     $("scaleTxt").textContent = a.gps ? "Desde tu posición: toca un waypoint o cualquier punto del mapa para ver la distancia y el rumbo" : nx ? leg(a, nx, true) + " (al siguiente) · toca otro punto para medir hasta él"
       : `Desde ${a.name}: toca otro waypoint o cualquier punto del mapa`;

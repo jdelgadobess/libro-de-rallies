@@ -40,6 +40,8 @@ function beep(times, ms, hz) {
     o.connect(g).connect(actx.destination); o.start(t); o.stop(t + ms / 1000 + 0.02);
   }
 }
+// recorded time without the pauses
+const recSecs = (r) => Math.max(0, ((r.end || Date.now()) - r.start - (r.pausedMs || 0) - (r.paused ? Date.now() - r.paused : 0)) / 1000);
 const say = (t) => { try { if (!("speechSynthesis" in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = "es-ES"; u.rate = 1; speechSynthesis.speak(u); } catch (e) {} };
 
 export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onSaved, onMeasure, onMove, routes, waypoints, layers, busy }) {
@@ -73,9 +75,14 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     $("recStage").hidden = true; $("recStage").disabled = !!rec; // the stage is the one chosen in the Libro de ruta
     if (rec) $("recStage").value = rec.stage;
     if (rec) {
-      const secs = ((rec.end || Date.now()) - rec.start) / 1000;
-      $("recInfo").textContent = `Grabando · ${kmOf(rec.segs).toFixed(2)} km · ${fmtTime(secs)}`;
+      $("recInfo").textContent = `${rec.paused ? "⏸ En pausa" : "Grabando"} · ${kmOf(rec.segs).toFixed(2)} km · ${fmtTime(recSecs(rec))}`;
     } else $("recInfo").textContent = "";
+    // the record / pause / stop buttons on top of the app
+    const on = !!(rec || fol);
+    $("rcGo").disabled = !!rec && !rec.paused; $("rcGo").title = rec && rec.paused ? "Seguir grabando" : "Grabar ruta";
+    $("rcPause").disabled = !rec || !!rec.paused;
+    $("rcStop").disabled = !on;
+    $("recCtl").classList.toggle("live", !!rec && !rec.paused); $("recCtl").classList.toggle("paused", !!(rec && rec.paused));
   }
 
   function draw(p) {
@@ -119,7 +126,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     if (offOn() && !offLooked) applyOff(false); onMove(p.coords.latitude, p.coords.longitude); checkRoute(p); checkNav(p);
     const speed = p.coords.speed ? ` · ${Math.round(p.coords.speed * 3.6)} km/h` : "";
     msg(`Precisión ±${Math.round(p.coords.accuracy)} m${speed}`);
-    if (rec && p.coords.accuracy <= MAX_ACC) {
+    if (rec && !rec.paused && p.coords.accuracy <= MAX_ACC) {
       const pt = [Math.round(p.coords.latitude * 1e6) / 1e6, Math.round(p.coords.longitude * 1e6) / 1e6];
       let seg = rec.segs[rec.segs.length - 1];
       const prev = seg && seg[seg.length - 1];
@@ -175,13 +182,14 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     const segs = r.segs.filter((s) => s.length > 1);
     const d = new Date(r.start);
     const name = `Grabada ${d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}`;
-    const row = { rally_id: r.rally, stage: r.stage || "", name, points: segs, kind: "grabada", meta: { start: new Date(r.start).toISOString(), end: new Date(r.end).toISOString(), secs: Math.round((r.end - r.start) / 1000), km: Math.round(kmOf(segs) * 100) / 100 }, created_by: user().email };
+    const row = { rally_id: r.rally, stage: r.stage || "", name, points: segs, kind: "grabada", meta: { start: new Date(r.start).toISOString(), end: new Date(r.end).toISOString(), secs: Math.round(recSecs(r)), km: Math.round(kmOf(segs) * 100) / 100 }, created_by: user().email };
     const { error } = await sb.from("tracks").insert(row);
     if (error) throw error;
     return row;
   }
   async function stopRec() {
     rec.end = Date.now();
+    if (rec.paused) { rec.pausedMs = (rec.pausedMs || 0) + rec.end - rec.paused; rec.paused = null; }
     const r = rec; rec = null; clearInterval(startRec.t);
     if (wake) { wake.release().catch(() => {}); wake = null; }
     idb.del("kv", "rec").catch(() => {});
@@ -363,8 +371,24 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     if (fol) { stopFollow(); if (rec) stopRec(); return; }
     if (rec) { say("Ruta terminada"); stopRec(); return; }
     // with a route for the stage: follow it (and record, for those who can edit); without one: just record
-    const has = routes().some((r) => r.segs.some((sg) => sg.length > 1));
+    const has = routes().some((r) => !r.name.startsWith("⏺") && r.segs.some((sg) => sg.length > 1)); // a recording is not the stage's route
     if (has) startFollow(); else if (canEdit()) startRec(false); else msg("Esta etapa no tiene ninguna ruta que seguir.", true);
+  };
+  // pause: no points are added and the time stops; going on starts a new stretch of the line
+  function pauseRec() { if (!rec || rec.paused) return; rec.paused = Date.now(); idb.put("kv", rec, "rec").catch(() => {}); say("Grabación en pausa"); ui(); }
+  function resumeRec() { if (!rec || !rec.paused) return; rec.pausedMs = (rec.pausedMs || 0) + Date.now() - rec.paused; rec.paused = null; rec.segs.push([]); idb.put("kv", rec, "rec").catch(() => {}); say("Sigo grabando"); ui(); }
+  function dropRec() { rec = null; clearInterval(startRec.t); idb.del("kv", "rec").catch(() => {}); recLayer.clearLayers(); msg("Grabación descartada.", true); ui(); }
+  $("rcGo").onclick = () => { audioOn(); if (rec && rec.paused) resumeRec(); else if (!rec && !fol) $("recBtn").click(); };
+  $("rcPause").onclick = pauseRec;
+  $("rcStop").onclick = () => {
+    if (!rec) { if (fol) stopFollow(); return; }
+    const wasPaused = !!rec.paused; if (!wasPaused) pauseRec();
+    $("saveInfo").textContent = `${kmOf(rec.segs).toFixed(2)} km · ${fmtTime(recSecs(rec))} · etapa ${rec.stage}`;
+    $("saveWrap").hidden = false;
+    const close = () => { $("saveWrap").hidden = true; $("svYes").onclick = $("svNo").onclick = $("svBack").onclick = null; };
+    $("svYes").onclick = () => { close(); say("Ruta terminada"); if (fol) stopFollow(); if (rec) stopRec(); };
+    $("svNo").onclick = () => { close(); if (fol) { const f = fol; f.ownRec = false; stopFollow(); } dropRec(); };
+    $("svBack").onclick = () => { close(); if (!wasPaused) resumeRec(); };
   };
   $("recDrop").onclick = () => {
     const b = $("recDrop");

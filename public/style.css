@@ -598,3 +598,20 @@ body.app .mapbox.full .mapsel label { font-size: 0; gap: 0 }
 body.app .mapbox.full .mapsel select { font-size: .95rem; max-width: 8.5em }
 #appBack { display: none }
 body.webtouch #appBack { display: inline-block }
+/* app top bar: año, etapa and tipo on the left; «Menú» and the settings cog on the right */
+body.app .mapbox.full .mapsel { order: 1 }
+body.app .mapbox.full .mapsel label:has(#mKind) { display: inline-flex !important }
+body.app .mapbox.full .mapsel label { font-size: .62rem; gap: 3px; flex-direction: column; align-items: flex-start }
+body.app .mapbox.full #mStage { max-width: 5.5em }
+body.app .mapbox.full #mKind { max-width: 9em }
+body.app .mapbox.full #fullStatus { order: 2 }
+body.app .mapbox.full #appMenuBtn { order: 3; margin-left: auto }
+body.app .mapbox.full #mapMenuBtn { order: 4; font-size: 1.3rem; padding: 6px 12px }
+body.app .mapbox.full #mStage { max-width: 4.5em }
+body.app .mapbox.full #mKind { max-width: 8.5em }
+@media (max-width: 520px) {
+  body.app .mapbox.full #appMenuBtn .lbl { display: none }
+  body.app .mapbox.full #appMenuBtn, body.app .mapbox.full #mapMenuBtn { font-size: 1.25rem; padding: 6px 10px }
+  body.app .mapbox.full .mapsel select { font-size: .85rem; padding: 4px 4px }
+  body.app .mapbox.full #mKind { max-width: 9.5em }
+}

@@ -361,7 +361,8 @@ function renderScope() {
   const ms = $("mStage"); ms.textContent = "";
   const stN = [...new Set(["1", "2", "3", "4", "5", "6", ...allStages().filter((k) => k !== "")])].sort(natural);
   if (state.stageFilter === "all" || state.stageFilter === "") { const o = new Option("Elige", ""); o.disabled = true; ms.append(o); }
-  stN.forEach((k) => ms.append(new Option(String(k) + (kindLabel(k) ? " · " + kindLabel(k) : ""), k)));
+  // the type has its own dropdown just to the right
+  stN.forEach((k) => ms.append(new Option(String(k), k)));
   ms.value = stN.includes(state.stageFilter) ? state.stageFilter : "";
   const mk = $("mKind"), kOk = state.stageFilter !== "all" && state.stageFilter !== "";
   mk.disabled = !kOk || !canEdit(); mk.value = kOk ? (stageKind(state.stageFilter) === "seguimiento" ? "seg_wp" : stageKind(state.stageFilter)) : "";
@@ -571,7 +572,8 @@ function setMenu(open) {
   if (open && head) $("mapMenu").style.top = (head.offsetTop + head.offsetHeight + 6) + "px";
   $("mapMenu").classList.toggle("open", open);
   $("mapMenuBtn").setAttribute("aria-expanded", String(open));
-  $("mapMenuBtn").textContent = open ? "✕ Cerrar" : APP ? "⚙️ Ajustes" : "☰ Menú";
+  $("mapMenuBtn").textContent = open ? (APP ? "✕" : "✕ Cerrar") : APP ? "⚙️" : "☰ Menú";
+  if (APP) $("mapMenuBtn").title = "Ajustes";
   if (open) setAppMenu(false);
 }
 $("mapMenuBtn").onclick = () => setMenu(!$("mapMenu").classList.contains("open"));
@@ -587,7 +589,7 @@ function setAppMenu(open) {
   if (open && head) $("appMenu").style.top = (head.offsetTop + head.offsetHeight + 6) + "px";
   $("appMenu").classList.toggle("open", open);
   $("appMenuBtn").setAttribute("aria-expanded", String(open));
-  $("appMenuBtn").textContent = open ? "✕ Cerrar" : "☰ Menú";
+  $("appMenuBtn").innerHTML = open ? '✕<span class="lbl"> Cerrar</span>' : '☰<span class="lbl"> Menú</span>';
   if (open) setMenu(false);
 }
 $("appMenuBtn").onclick = () => setAppMenu(!$("appMenu").classList.contains("open"));

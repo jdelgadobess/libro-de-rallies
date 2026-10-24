@@ -615,3 +615,12 @@ body.app .mapbox.full #mKind { max-width: 8.5em }
   body.app .mapbox.full .mapsel select { font-size: .85rem; padding: 4px 4px }
   body.app .mapbox.full #mKind { max-width: 9.5em }
 }
+/* «Trabajar sin conexión»: a globe, in colour when connected and grey when working offline */
+.offtoggle span { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; background: transparent; border-color: transparent }
+.offtoggle .globe { font-size: 1.9rem; line-height: 1; font-weight: normal; transition: filter .2s, opacity .2s }
+.offtoggle input:checked + span { background: transparent; color: inherit; border-color: transparent }
+.offtoggle input:checked + span .globe { filter: grayscale(1); opacity: .45 }
+.offtoggle .offtxt { font-style: normal; font-size: .8rem; color: var(--muted) }
+.offtoggle .offtxt::after { content: "Con conexión" }
+.offtoggle input:checked + span .offtxt::after { content: "Sin conexión" }
+body:not(.app) .offtoggle .offtxt { display: none }

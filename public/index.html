@@ -230,7 +230,7 @@
           <h2 id="mapTitle">Mapa</h2>
           <span class="mapsel" data-libro><label>Año <select id="mYear"></select></label><label>Etapa <select id="mStage"></select></label><label>Tipo <select id="mKind"><option value="">—</option><option value="seg_track">Seguimiento track</option><option value="seg_wp">Seguimiento waypoint</option><option value="caza">Caza waypoint</option></select></label><button type="button" class="ghost" id="mDel" data-edit>🗑 Eliminar ruta</button><button type="button" class="ghost" id="mStageDel" data-edit>🗑 Eliminar etapa</button></span>
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
-          <label class="offtoggle" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"><span>📴 Trabajar sin conexión</span></label>
+          <label class="offtoggle" title="En color: con conexión. En gris: sin conexión (solo los mapas guardados en este dispositivo, sin gastar datos). Pulsa para cambiar."><input type="checkbox" id="offMode" aria-label="Trabajar sin conexión"><span><b class="globe" aria-hidden="true">🌍</b><i class="offtxt"></i></span></label>
           <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
           <button type="button" class="hl" id="appMenuBtn" aria-expanded="false" aria-controls="appMenu">☰<span class="lbl"> Menú</span></button>
           <button type="button" class="ghost" id="appBack">📱 Volver a la app</button>
@@ -303,7 +303,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 99</span>
+          <span class="msg ver">Versión 100</span>
         </div>
         </details>
         </div>

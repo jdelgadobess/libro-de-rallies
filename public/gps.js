@@ -54,15 +54,18 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   const bear = () => (canRot ? map.getBearing() : 0);
   let up = canRot && localStorage.getItem("rally.up") !== "0", selfRot = false, handRot = 0, lastUser = 0;
   const setB = (b) => { if (!canRot) return; const d = Math.abs(((b - bear()) % 360 + 540) % 360 - 180); if (d < 2) return; selfRot = true; map.setBearing(b); selfRot = false; };
+  let fol = null; // the route being followed (declared here: the buttons read it from the start)
   let keepUntil = 0; // an important message stays a few seconds before the accuracy readout replaces it
   const msg = (t, sticky) => { if (!sticky && Date.now() < keepUntil) return; $("gpsMsg").textContent = t || ""; if (sticky) keepUntil = Date.now() + 10000; };
 
   function ui() {
     $("gpsBtn").textContent = watch === null ? "📍 Mi posición (GPS)" : follow ? "📍 GPS activo · siguiendo" : "📍 GPS activo · centrar";
     $("gpsBtn").className = watch === null ? "ghost" : "hl";
-    $("recBtn").textContent = rec ? "⏹ Terminar ruta" : "⏺ Grabar ruta";
-    $("recBtn").className = rec ? "warn" : "ghost";
-    $("recBtn").hidden = !canEdit() || !!(fol && rec); // while following a route its own button ends it
+    // one button: recording also follows the stage's route (there is no separate «Iniciar ruta»)
+    const going = !!(rec || fol);
+    $("recBtn").textContent = going ? "⏹ Terminar ruta" : canEdit() ? "⏺ Grabar ruta" : "▶ Seguir la ruta";
+    $("recBtn").className = going ? "warn" : "ghost";
+    $("recBtn").hidden = false;
     $("recDrop").hidden = !rec;
     $("gpsMeasure").hidden = watch === null;
     $("recStage").hidden = true; $("recStage").disabled = !!rec; // the stage is the one chosen in the Libro de ruta
@@ -245,7 +248,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   };
   if (canRot) { new Compass().addTo(map); compass(); }
   /* ---------- following a route: a warning when I leave it by more than the metres chosen ---------- */
-  let fol = null; // { route, thr, off, quiet, lastWarn, ownRec }
+  fol = null; // { route, thr, off, quiet, lastWarn, ownRec }
   const folLayer = L.layerGroup().addTo(map);
   const banner = document.createElement("div"); banner.className = "offroute"; banner.hidden = true;
   banner.innerHTML = '<span id="offTxt"></span><button type="button" id="offOk">OK, no pasa nada</button>';
@@ -346,7 +349,13 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     msg(on ? "Toca un waypoint o cualquier punto del mapa para ver la distancia desde tu posición." : "", true);
   }
   $("gpsMeasure").onclick = measureHere;
-  $("recBtn").onclick = () => { if (rec) { say("Ruta terminada"); stopRec(); } else startRec(false); };
+  $("recBtn").onclick = () => {
+    if (fol) { stopFollow(); if (rec) stopRec(); return; }
+    if (rec) { say("Ruta terminada"); stopRec(); return; }
+    // with a route for the stage: follow it (and record, for those who can edit); without one: just record
+    const has = routes().some((r) => r.segs.some((sg) => sg.length > 1));
+    if (has) startFollow(); else if (canEdit()) startRec(false); else msg("Esta etapa no tiene ninguna ruta que seguir.", true);
+  };
   $("recDrop").onclick = () => {
     const b = $("recDrop");
     if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "¿Descartar la grabación?"; return; }

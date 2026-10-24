@@ -562,3 +562,39 @@ body:not(.tab-plan) #mapTitle { display: none }
 .mapfloat button[hidden] { display: none }
 #mKind.need { outline: 3px solid var(--saffron); outline-offset: 2px; animation: pulse 1s ease-in-out 3 }
 #mDel { display: none !important }
+/* the app on the phone: only the map, with «Ajustes» and «Menú» on top */
+#appMenuBtn, .appmenu, .appwps { display: none }
+#followBtn { display: none !important }
+body.app .mapbox.full { padding: 6px 8px }
+body.app .mapbox.full .boxhead { gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px }
+body.app .mapbox.full #appMenuBtn { display: inline-block; order: -1 }
+body.app .mapbox.full #mapMenuBtn { order: -2 }
+body.app .mapbox.full #mapTitle, body.app .mapbox.full #mapFull, body.app .mapbox.full .fmt, body.app .mapbox.full #mDel, body.app .mapbox.full #mStageDel,
+body.app .mapbox.full .mapsel label:has(#mKind) { display: none !important }
+body.app .mapbox.full .mapsel { gap: 6px; flex-wrap: nowrap }
+body.app .mapbox.full .mapsel label { font-size: .7rem; gap: 4px }
+body.app .mapbox.full .mapsel select { padding: 4px 6px; font-size: .9rem; min-width: 0 }
+body.app .mapbox.full #altBar, body.app .mapbox.full .drawbar, body.app .mapbox.full #recBox { display: none !important }
+body.app .mapbox.full .appwps { display: block; padding: 10px 12px }
+body.app .appwps summary { font-weight: 700; cursor: pointer }
+body.app .appwps ul { list-style: none; margin: 8px 0 0; padding: 0; max-height: 40vh; overflow-y: auto }
+body.app .appwps li { padding: 6px 0; border-bottom: 1px solid var(--line) }
+body.app .appwps label { display: flex; gap: 10px; align-items: center; font-size: 1rem }
+body.app .appwps input[type=checkbox] { width: 22px; height: 22px }
+body.app .mapbox.full .appmenu { display: none; position: absolute; z-index: 1200; top: 64px; left: 12px; width: min(440px, calc(100% - 24px)); max-height: calc(100% - 110px); overflow-y: auto; background: var(--sheet-solid); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); padding: 0 }
+body.app .mapbox.full .appmenu.open { display: block }
+body.app .appmenu > * { padding: 10px 12px; margin: 0; border-bottom: 1px solid var(--line) }
+body.app .appmenu > [data-title]::before { content: attr(data-title); flex-basis: 100%; font: 600 .66rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted) }
+body.app .appmenu label.btn { display: block; width: 100%; text-align: center; padding: 14px; font-size: 1.05rem; background: var(--red); border-color: var(--red); color: #fff; box-sizing: border-box; cursor: pointer }
+body.app .mapbox.full .mapmenu { left: 12px; right: auto }
+body.app .gpsbar button { padding: 12px 14px; font-size: 1rem }
+body.app .offtoggle { margin-bottom: 6px }
+.accwrap { z-index: 3500 }
+body.app .mapbox.full .boxhead > button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 8px 12px; font-size: .95rem; width: auto; flex: none }
+body.app .mapbox.full .boxhead { align-items: center }
+body.app .appwps label, body.app .appmenu label.btn { text-transform: none; letter-spacing: normal; font-family: inherit; font-weight: 600; color: inherit }
+body.app .appmenu label.btn { color: #fff }
+body.app .mapbox.full .mapsel label { font-size: 0; gap: 0 }
+body.app .mapbox.full .mapsel select { font-size: .95rem; max-width: 8.5em }
+#appBack { display: none }
+body.webtouch #appBack { display: inline-block }

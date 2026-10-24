@@ -229,6 +229,7 @@ async function boot(user) {
     .subscribe();
   await loadAll();
   if (role === "admin") loadMembers();
+  if (APP) appStart();
   loadMaps();
 }
 
@@ -290,7 +291,7 @@ function render() {
   $("readBtn").disabled = !r || !state.photos.length || state.reading;
   $("wSave").disabled = !r;
   $("mapTitle").textContent = r ? scopeLabel() : "Mapa";
-  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads(); renderPlan(); renderRecTab();
+  renderTable(); renderTracks(); renderMap(); renderReview(); renderDownloads(); renderPlan(); renderRecTab(); renderAppWps();
 }
 
 function renderTable() {
@@ -394,7 +395,7 @@ function renderPtsFilter() {
   });
 }
 const numOrNull = (v) => v === "" ? null : parseInt(v, 10);
-const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); };
+const refilter = () => { renderTable(); renderMap(); renderDownloads(); renderPlan(); renderAppWps(); };
 $("fStage").onchange = (e) => pickStage(e.target.value);
 // deletes the route picked in «Seguir ruta» (a track, a recording or a planner's proposal), after asking
 $("mDel").onclick = async () => {
@@ -570,9 +571,67 @@ function setMenu(open) {
   if (open && head) $("mapMenu").style.top = (head.offsetTop + head.offsetHeight + 6) + "px";
   $("mapMenu").classList.toggle("open", open);
   $("mapMenuBtn").setAttribute("aria-expanded", String(open));
-  $("mapMenuBtn").textContent = open ? "✕ Cerrar menú" : "☰ Menú";
+  $("mapMenuBtn").textContent = open ? "✕ Cerrar" : APP ? "⚙️ Ajustes" : "☰ Menú";
+  if (open) setAppMenu(false);
 }
 $("mapMenuBtn").onclick = () => setMenu(!$("mapMenu").classList.contains("open"));
+
+/* ---------- the app on the phone or tablet: the map fills the screen, with «Ajustes» and «Menú» on top ---------- */
+// on a touch screen, or opened from the home screen; «Ver la web completa» switches it off on this device
+const APP = (() => {
+  try { if (localStorage.getItem("rally.web") === "1") return false; } catch (e) {}
+  return !!(window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(pointer: coarse)").matches));
+})();
+function setAppMenu(open) {
+  const head = mapBox().querySelector(".boxhead");
+  if (open && head) $("appMenu").style.top = (head.offsetTop + head.offsetHeight + 6) + "px";
+  $("appMenu").classList.toggle("open", open);
+  $("appMenuBtn").setAttribute("aria-expanded", String(open));
+  $("appMenuBtn").textContent = open ? "✕ Cerrar" : "☰ Menú";
+  if (open) setMenu(false);
+}
+$("appMenuBtn").onclick = () => setAppMenu(!$("appMenu").classList.contains("open"));
+function appStart() {
+  document.body.classList.add("app");
+  // «Trabajar sin conexión» goes with the maps, inside «Ajustes»
+  const off = document.querySelector(".boxhead .offtoggle"); if (off) $("lyBox").querySelector(".layersbar").prepend(off);
+  $("lyBox").open = false;
+  setTab("libro"); setMapFull(true);
+  // what the imports say shows in the menu too
+  const mirror = (id) => new MutationObserver(() => { const t = $(id).textContent; if (t) $("appMsg").textContent = t; }).observe($(id), { childList: true, characterData: true, subtree: true });
+  ["photoMsg", "impMsg", "trkMsg", "notice"].forEach(mirror);
+  new MutationObserver(() => { $("appPhotoGpx").hidden = $("photoGpxBox").hidden; $("appPhotoGpx").textContent = $("photoGpx").textContent; }).observe($("photoGpxBox"), { attributes: true, subtree: true, childList: true, characterData: true });
+}
+// the full web was chosen on a touch screen: a button brings the app back
+try { if (localStorage.getItem("rally.web") === "1" && window.matchMedia && matchMedia("(pointer: coarse)").matches) document.body.classList.add("webtouch"); } catch (e) {}
+$("appBack").onclick = () => { try { localStorage.removeItem("rally.web"); } catch (e) {} location.reload(); };
+$("appWeb").onclick = () => { try { localStorage.setItem("rally.web", "1"); } catch (e) {} location.reload(); };
+$("appPhotoGpx").onclick = () => $("photoGpx").click();
+// one GPX for everything: its waypoints and its track go to the stage asked for
+$("appGpx").addEventListener("change", async (e) => {
+  const f = [...e.target.files]; e.target.value = ""; if (!f.length) return;
+  setAppMenu(false);
+  const texts = await Promise.all(f.map((x) => x.text().catch(() => "")));
+  const hasTrk = texts.some((t) => /<trkpt|<rtept|<LineString/i.test(t)), hasWpt = texts.some((t) => /<wpt|<Point>/i.test(t));
+  if (!(await askWhere(`GPX: ${nFiles(f)}.`))) return;
+  if (hasWpt || !hasTrk) await importWaypointFiles(f);
+  if (hasTrk) await importTracks(f);
+  render();
+});
+// the stage's waypoints, each one on or off the map
+function renderAppWps() {
+  if (!APP) return;
+  const list = visibleWps(), ul = $("appWpList"); ul.textContent = "";
+  $("appWpSum").textContent = state.stageFilter === "all" ? "📍 Waypoints (elige la etapa)" : `📍 Waypoints: ${list.filter((w) => !filt.off.has(w.id)).length} de ${list.length} en el mapa`;
+  list.forEach((w) => {
+    const li = document.createElement("li"), lb = document.createElement("label"), cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = !filt.off.has(w.id);
+    cb.onchange = () => { if (cb.checked) filt.off.delete(w.id); else filt.off.add(w.id); refilter(); };
+    lb.append(cb, ` ${w.name}${w.pts ? " · " + w.pts + " pts" : ""}${w.desc ? " · " + w.desc : ""}`); li.append(lb); ul.append(li);
+  });
+}
+$("appWpAll").onclick = () => $("fAll").click();
+$("appWpNone").onclick = () => $("fNone").click();
 // what is going on (recording, following a route) stays in sight with the menu closed
 setInterval(() => { if (!document.body.classList.contains("mapfull")) return; $("fullStatus").textContent = [$("recInfo").textContent, $("followInfo").textContent].filter(Boolean).join(" · "); }, 1000);
 function setMapFull(on) {

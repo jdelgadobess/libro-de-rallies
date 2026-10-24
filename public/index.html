@@ -232,6 +232,8 @@
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
           <label class="offtoggle" title="Sin gastar datos: solo los mapas guardados en este dispositivo"><input type="checkbox" id="offMode"><span>📴 Trabajar sin conexión</span></label>
           <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
+          <button type="button" class="hl" id="appMenuBtn" aria-expanded="false" aria-controls="appMenu">☰ Menú</button>
+          <button type="button" class="ghost" id="appBack">📱 Volver a la app</button>
           <span class="rec" id="fullStatus"></span>
           <span class="fmt">Coordenadas
             <select id="fmt" aria-label="Formato de coordenadas">
@@ -286,6 +288,11 @@
           <summary id="recSum">Rutas grabadas</summary>
           <ul class="tracks" id="recList"></ul>
         </details>
+        <details class="appwps" id="appWpBox">
+          <summary id="appWpSum">📍 Waypoints</summary>
+          <div class="btns"><button type="button" class="ghost" id="appWpAll">Todos</button><button type="button" class="ghost" id="appWpNone">Ninguno</button></div>
+          <ul id="appWpList"></ul>
+        </details>
         <details class="layersbox" id="lyBox">
         <summary>🗺️ Mapas <small>caminos, satélite, mapas guardados y descargas</small></summary>
         <div class="layersbar">
@@ -296,9 +303,22 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 94</span>
+          <span class="msg ver">Versión 95</span>
         </div>
         </details>
+        </div>
+        <!-- the app on the phone: importing from the map screen -->
+        <div class="mapmenu appmenu" id="appMenu">
+          <div class="btns" data-title="Importar">
+            <label class="btn hl" for="photos">📷 Importar fotos del roadbook</label>
+            <label class="btn hl" for="appGpx">📍 Importar GPX</label>
+            <input type="file" id="appGpx" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,application/xml,text/xml" multiple class="vh">
+            <button type="button" class="ghost" id="appPhotoGpx" hidden>⬇ GPX de los puntos de las fotos</button>
+          </div>
+          <p class="msg" id="appMsg"></p>
+          <div class="btns" data-title="Pantalla">
+            <button type="button" class="ghost" id="appWeb">🖥 Ver la web completa</button>
+          </div>
         </div>
         <div class="gmap" id="gmap"></div>
         <div class="scale"><span id="scaleTxt"></span><span id="scaleHelp">Toca waypoints o cualquier punto para ver distancia y rumbo</span></div>

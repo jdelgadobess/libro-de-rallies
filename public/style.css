@@ -685,3 +685,11 @@ body.app.tab-plan:not(.mapfull) #yearBox { display: none }
 }
 /* app planner: año and nº de etapa (the same as on the map) at the top, then the proposals */
 body.app.tab-plan:not(.mapfull) #stageBox { order: -2 }
+/* app planner on a narrow screen: año / etapa, then the map with the coloured proposals, then the planner, then the rest */
+@media (max-width: 880px) {
+  body.app.tab-plan:not(.mapfull) .desk { display: flex; flex-direction: column; gap: 22px }
+  body.app.tab-plan:not(.mapfull) .desk > .col, body.app.tab-plan:not(.mapfull) .desk > .col:first-child { display: contents }
+  body.app.tab-plan:not(.mapfull) #stageBox { order: -3 }
+  body.app.tab-plan:not(.mapfull) .desk .mapbox { order: -2; min-width: 0; max-width: 100% }
+  body.app.tab-plan:not(.mapfull) #planPanel { order: -1 }
+}

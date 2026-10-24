@@ -683,3 +683,5 @@ body.app.tab-plan:not(.mapfull) #yearBox { display: none }
   body.app .mapbox.full #appMenuBtn { order: 4; margin-left: 0 }
   body.app .mapbox.full #mapMenuBtn { order: 5 }
 }
+/* app planner: año and nº de etapa (the same as on the map) at the top, then the proposals */
+body.app.tab-plan:not(.mapfull) #stageBox { order: -2 }

@@ -457,6 +457,8 @@ function pickStage(k) {
   // a route picked in another stage must not stay on this stage's map
   state.stageFilter = k; state.hi = null; filt.follow = null; filt.trk = ""; filt.only = null; filt.rec = null;
   $("stageNo").value = k === "all" ? "" : k;
+  // picking a stage takes the map to it, even with the GPS somewhere else
+  if (k !== "all") { if (gpsApi) gpsApi.lookAway(); fitKey = "pick"; }
   render();
 }
 $("fText").addEventListener("input", (e) => { filt.text = e.target.value.trim().toLowerCase(); refilter(); });
@@ -472,7 +474,7 @@ $("fClear").onclick = () => {
 };
 
 /* ---------- map (satellite, no key needed) ---------- */
-let lmap = null, layer = null, fitKey = "", measure = [];
+let lmap = null, layer = null, fitKey = "", measure = [], gpsApi = null;
 let adding = null; // creating waypoints by tapping the map: { made: [ids created in this go] }
 const TOUCH = window.matchMedia && matchMedia("(pointer: coarse)").matches;
 // direction arrows along tracks and routes, spaced on screen so they stay readable at any zoom
@@ -532,7 +534,7 @@ function loadMaps() {
   fl.querySelector("#flUndo").onclick = () => (drawing ? drawUndo() : $("addUndo").click());
   fl.querySelector("#flEnd").onclick = () => (drawing ? $(drawing.alt ? "drawAlt" : "drawSave").click() : $("addEnd").click());
   fl.querySelector("#flCancel").onclick = () => $("drawCancel").click();
-  setupGps({ map: lmap, layers: layersCtl, busy: () => !!adding, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
+  gpsApi = setupGps({ map: lmap, layers: layersCtl, busy: () => !!adding, sb, canEdit, rallyId: () => state.rallyId, stage: () => $("recStage").value, user: () => state.user, writeErr, onSaved: () => loadAll(),
     onMeasure: gpsMeasure, routes: followRoutes, waypoints: () => rallyWps().filter((w) => stageKey(w) === ($("recStage").value || (state.stageFilter !== "all" ? state.stageFilter : ""))), onMove: (lat, lon) => {
       // measuring from where I am: the start follows the GPS, redrawn every few seconds
       const g = measure[0]; if (!g || !g.gps) return;
@@ -741,8 +743,10 @@ function renderMap() {
   const key = state.rallyId + "|" + state.stageFilter;
   if (pts.length && key !== fitKey) {
     const forced = fitKey === ""; fitKey = key;
-    const start = !forced && state.stageFilter !== "all" ? stageStart(list, trks) : null;
-    if (start) lmap.setView(start, Math.max(13, Math.min(lmap.getZoom(), 15)));
+    // a hunt shows its whole zone; following a route or waypoints starts at the first waypoint or the route's start
+    const st = state.stageFilter;
+    const start = !forced && st !== "all" && !isCaza(st) ? stageStart(list, trks) : null;
+    if (start) lmap.setView(start, 15);
     else if (pts.length === 1) lmap.setView(pts[0], 15);
     else lmap.fitBounds(pts, { padding: [40, 40] });
   }
@@ -939,9 +943,6 @@ $("photoGpx").onclick = () => {
 // after saving the photos' points: the Libro de ruta of that stage, asking for its type if it has none
 function goStage(st, what = "Puntos de las fotos guardados") {
   setTab("libro"); pickStage(st);
-  // the map comes to the stage: its waypoints and its routes
-  const pts = [...mapWps().map((w) => [w.lat, w.lon]), ...visibleTracks().flatMap((t) => t.segs.flat())];
-  setTimeout(() => { if (lmap && pts.length) lmap.fitBounds(pts, { padding: [30, 30] }); }, 150);
   if (!stageKind(st)) {
     showNotice(`${what} en la etapa ${st}. Elige ahora arriba del mapa el tipo de etapa.`);
     $("mKind").classList.add("need"); $("mKind").scrollIntoView({ behavior: "smooth", block: "center" });

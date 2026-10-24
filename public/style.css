@@ -353,7 +353,8 @@ body:not(.tab-rec) #recTab { display: none }
 .navbox .big { font-size: 1.8rem; font-weight: 700; line-height: 1 }
 .navbox small { font-size: .8rem; opacity: .9 }
 .navbox svg { width: 40px; height: 40px; flex: none }
-.navbox.hdg { top: 10px; left: 56px; flex-direction: column; gap: 2px; min-width: 96px; text-align: center }
+.navbox.hdg { top: 10px; right: 10px; flex-direction: column; gap: 2px; min-width: 96px; text-align: center }
+.leaflet-container:has(#measureCtl:not([hidden])) .navbox.hdg { top: 58px } /* below the measure buttons when they show */
 .navbox.wpnav { bottom: 28px; left: 50%; transform: translateX(-50%) }
 .navbox.wpnav > div { display: flex; flex-direction: column }
 .navbox.wpnav svg { width: 56px; height: 56px }
@@ -626,17 +627,17 @@ body.app .mapbox.full #mKind { max-width: 8.5em }
 body:not(.app) .offtoggle .offtxt { display: none }
 /* app: record / pause / stop next to the stage type */
 .recctl { display: none }
-body.app .mapbox.full .recctl { display: inline-flex; gap: 6px; order: 2; align-items: center; flex: none }
-.recctl button { width: 46px; height: 46px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--line); border-radius: 50%; color: #222 }
+body.app .mapbox.full .recctl { display: inline-flex; gap: 4px; order: 2; align-items: center; flex: none }
+.recctl button { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--line); border-radius: 50%; color: #222 }
 .recctl button:disabled { opacity: .35 }
-.recctl .dot { width: 20px; height: 20px; border-radius: 50%; background: #d32f2f; display: block }
-.recctl .bars { width: 16px; height: 18px; display: block; border-left: 5px solid #222; border-right: 5px solid #222; box-sizing: border-box }
-.recctl .sq { width: 17px; height: 17px; background: #222; display: block; border-radius: 2px }
+.recctl .dot { width: 13px; height: 13px; border-radius: 50%; background: #d32f2f; display: block }
+.recctl .bars { width: 11px; height: 12px; display: block; border-left: 3.5px solid #222; border-right: 3.5px solid #222; box-sizing: border-box }
+.recctl .sq { width: 11px; height: 11px; background: #222; display: block; border-radius: 2px }
 .recctl.live #rcGo .dot { animation: recblink 1s steps(2) infinite }
 .recctl.paused #rcGo { border-color: #d32f2f; box-shadow: 0 0 0 2px #d32f2f inset }
 @keyframes recblink { 50% { opacity: .25 } }
 body.app .mapbox.full #fullStatus { order: 2; font-size: .75rem }
-@media (max-width: 520px) { .recctl button { width: 40px; height: 40px } body.app .mapbox.full .boxhead { flex-wrap: wrap; row-gap: 6px } }
+@media (max-width: 520px) { .recctl button { width: 32px; height: 32px } body.app .mapbox.full .boxhead { flex-wrap: wrap; row-gap: 6px } }
 #saveWrap .btns button { padding: 12px 16px; font-size: 1rem }
 body.app .mapbox.full #fullStatus { order: 5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0 }
 @media (max-width: 520px) {

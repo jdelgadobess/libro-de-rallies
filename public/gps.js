@@ -56,6 +56,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   // the map turned with two fingers, or along the way I drive («Marcha») with north wherever it falls
   const canRot = !!(map.setBearing && map._rotate);
   const bear = () => (canRot ? map.getBearing() : 0);
+  let hold = false; // a stage just picked keeps the map on it until "Mi posición" is pressed
   let up = canRot && localStorage.getItem("rally.up") !== "0", selfRot = false, handRot = 0, lastUser = 0;
   const setB = (b) => { if (!canRot) return; const d = Math.abs(((b - bear()) % 360 + 540) % 360 - 180); if (d < 2) return; selfRot = true; map.setBearing(b); selfRot = false; };
   let fol = null; // the route being followed (declared here: the buttons read it from the start)
@@ -174,7 +175,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     if (!startWatch()) return;
     if (!resumed) rec = { start: Date.now(), segs: [], rally: rallyId(), stage: stage() };
     idb.put("kv", rec, "rec").catch(() => {});
-    follow = true; zoomIn = true; keepAwake(); drawRec(); ui();
+    follow = true; hold = false; zoomIn = true; keepAwake(); drawRec(); ui();
     clearInterval(startRec.t); startRec.t = setInterval(ui, 1000);
   }
 
@@ -224,8 +225,8 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
 
   $("gpsBtn").onclick = () => {
     audioOn(); // the beeps need a tap to be allowed
-    if (watch === null) { follow = true; zoomIn = true; startWatch(); }
-    else if (!follow) { follow = true; zoomIn = true; if (last) draw(last); ui(); }
+    if (watch === null) { follow = true; hold = false; zoomIn = true; startWatch(); }
+    else if (!follow) { follow = true; hold = false; zoomIn = true; if (last) draw(last); ui(); }
     else if (!rec) stopWatch();
     else { follow = false; ui(); }
   };
@@ -236,9 +237,9 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   map.on("drag", touched);
   map.on("rotate", () => { compass(); if (!selfRot) { handRot = Date.now(); touched(); } });
   setInterval(() => {
-    if (watch === null || follow || !last || Date.now() - lastUser < 8000) return;
+    if (hold || watch === null || follow || !last || Date.now() - lastUser < 8000) return;
     if (busy && busy()) return;
-    follow = true; draw(last); ui();
+    follow = true; hold = false; draw(last); ui();
   }, 2000);
   const Compass = L.Control.extend({ options: { position: "topleft" }, onAdd() {
     const b = L.DomUtil.create("button", "compass-ctl"); b.type = "button"; b.id = "compassBtn";
@@ -246,7 +247,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     b.onclick = () => {
       up = !up; try { localStorage.setItem("rally.up", up ? "1" : "0"); } catch (e) {}
       handRot = 0;
-      if (!up) setB(0); else if (last && watch !== null) { follow = true; draw(last); ui(); }
+      if (!up) setB(0); else if (last && watch !== null) { follow = true; hold = false; draw(last); ui(); }
       compass();
     };
     return b;
@@ -347,7 +348,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     audioOn();
     fol = { route: { name: r.name, segs: r.segs.filter((s) => s.length) }, thr, off: false, quiet: false, lastWarn: 0, ownRec: false, taken: new Set(), warned: null, prev: null, course: undefined, lastTaken: null };
     say(`Iniciando ruta. Te aviso si te desvías más de ${thr} metros`);
-    follow = true; zoomIn = true; startWatch();
+    follow = true; hold = false; zoomIn = true; startWatch();
     if (!rec && canEdit() && stage()) { fol.ownRec = true; startRec(false); }
     const all = fol.route.segs.flat(); if (!last && all.length > 1) map.fitBounds(all, { padding: [30, 30] });
     followUi(); if (last) checkRoute(last);
@@ -420,9 +421,11 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   applyOff(false);
   // on a phone or tablet my position shows as soon as the map opens
   if (CLOSE === 17) {
-    const go = () => { if (watch === null) { follow = true; zoomIn = true; startWatch(); } };
+    const go = () => { if (watch === null) { follow = true; hold = false; zoomIn = true; startWatch(); } };
     try { navigator.permissions.query({ name: "geolocation" }).then((p) => { if (p.state !== "denied") go(); }, go); } catch (e) { go(); }
   }
   sendPending();
   ui();
+  // the map is wanted somewhere else (a stage picked): stop following my position
+  return { lookAway() { hold = true; if (follow) { follow = false; ui(); } } };
 }

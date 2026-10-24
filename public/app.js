@@ -615,10 +615,10 @@ $("appGpx").addEventListener("change", async (e) => {
   setAppMenu(false);
   const texts = await Promise.all(f.map((x) => x.text().catch(() => "")));
   const hasTrk = texts.some((t) => /<trkpt|<rtept|<LineString/i.test(t)), hasWpt = texts.some((t) => /<wpt|<Point>/i.test(t));
-  if (!(await askWhere(`GPX: ${nFiles(f)}.`))) return;
+  const w = await askWhere(`GPX: ${nFiles(f)}.`); if (!w) return;
   if (hasWpt || !hasTrk) await importWaypointFiles(f);
   if (hasTrk) await importTracks(f);
-  render();
+  render(); goStage(w.stage, "GPX importado");
 });
 // the stage's waypoints, each one on or off the map
 function renderAppWps() {
@@ -819,12 +819,23 @@ function askWhere(what) {
     if (!sel.options.length) { done(null); setTab("imp"); openYearForm(); showNotice("Crea primero el año y vuelve a importar."); return; }
     sel.value = state.rallyId || sel.options[0].value;
     $("whereStage").value = currentStage() || (state.stageFilter !== "all" ? state.stageFilter : "");
+    // the stage's type is asked here too; it shows the one it already has
+    const kindOf = () => { const k = String(parseInt($("whereStage").value, 10)); const o = (state.stages || []).find((x) => x.rallyId === sel.value && x.stage === k); return o ? (o.kind === "seguimiento" ? "seg_wp" : o.kind) : ""; };
+    const syncKind = () => { $("whereKind").value = kindOf(); };
+    $("whereStage").oninput = sel.onchange = syncKind; syncKind();
+    $("whereKindL").hidden = !canEdit(); $("whereKind").required = canEdit();
     $("whereWhat").textContent = what;
     $("whereWrap").hidden = false; setTimeout(() => $("whereStage").focus(), 50);
-    const end = (ok) => {
+    const end = async (ok) => {
       $("whereWrap").hidden = true; $("whereForm").onsubmit = $("whereNo").onclick = null;
       if (!ok) { done(null); return; }
-      const st = String(parseInt($("whereStage").value, 10));
+      const st = String(parseInt($("whereStage").value, 10)), kind = $("whereKind").value;
+      if (kind && canEdit() && kind !== kindOf()) {
+        try {
+          must(await sb.from("stages").upsert({ rally_id: sel.value, stage: st, kind, created_by: state.user.email }));
+          state.stages = (state.stages || []).filter((x) => !(x.rallyId === sel.value && x.stage === st)).concat({ rallyId: sel.value, stage: st, kind });
+        } catch (e) { showNotice(writeErr(e)); }
+      }
       state.rallyId = sel.value; $("stageNo").value = st; state.stageFilter = st; state.hi = null; render();
       done({ rallyId: sel.value, stage: st });
     };
@@ -923,15 +934,16 @@ $("photoGpx").onclick = () => {
   download(stageFile(p.stage) + "_fotos.gpx", buildGpx(list, r.year + " " + r.name + " · " + stageLabel(p.stage), []), "application/gpx+xml");
 };
 // after saving the photos' points: the Libro de ruta of that stage, asking for its type if it has none
-function goStage(st) {
+function goStage(st, what = "Puntos de las fotos guardados") {
   setTab("libro"); pickStage(st);
-  const pts = mapWps().map((w) => [w.lat, w.lon]);
+  // the map comes to the stage: its waypoints and its routes
+  const pts = [...mapWps().map((w) => [w.lat, w.lon]), ...visibleTracks().flatMap((t) => t.segs.flat())];
   setTimeout(() => { if (lmap && pts.length) lmap.fitBounds(pts, { padding: [30, 30] }); }, 150);
   if (!stageKind(st)) {
-    showNotice(`Puntos de las fotos guardados en la etapa ${st}. Elige ahora arriba del mapa el tipo de etapa.`);
+    showNotice(`${what} en la etapa ${st}. Elige ahora arriba del mapa el tipo de etapa.`);
     $("mKind").classList.add("need"); $("mKind").scrollIntoView({ behavior: "smooth", block: "center" });
     setTimeout(() => $("mKind").classList.remove("need"), 6000);
-  } else showNotice(`Puntos de las fotos guardados en la etapa ${st} (${kindLabel(st)}).`);
+  } else showNotice(`${what} en la etapa ${st} (${kindLabel(st)}). Sus waypoints están en el mapa y en la tabla de abajo.`);
 }
 async function saveRows(rows) {
   const st = currentStage(), r = rally();
@@ -1045,11 +1057,11 @@ async function importTracks(files) {
     msg.textContent = (rows.length ? `Track guardado en la etapa ${st}: ` + rows.map((r) => `${r.name} (${kmOf(r.points).toFixed(1)} km)`).join(", ") + "." : "") + (bad.length ? " No se pudo: " + bad.join("; ") : "");
   } catch (e) { msg.textContent = writeErr(e); }
 }
-$("trackFile").addEventListener("change", async (e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length && await askWhere(`Track: ${nFiles(f)}.`)) importTracks(f); });
+$("trackFile").addEventListener("change", async (e) => { const f = [...e.target.files]; e.target.value = ""; const w = f.length && await askWhere(`Track: ${nFiles(f)}.`); if (w) { await importTracks(f); goStage(w.stage, "GPX importado"); } });
 const tdrop = $("trkDrop");
 tdrop.addEventListener("dragover", (e) => { e.preventDefault(); tdrop.classList.add("over"); });
 tdrop.addEventListener("dragleave", () => tdrop.classList.remove("over"));
-tdrop.addEventListener("drop", (e) => { e.preventDefault(); tdrop.classList.remove("over"); const f = [...e.dataTransfer.files]; if (f.length) askWhere(`Track: ${nFiles(f)}.`).then((ok) => ok && importTracks(f)); });
+tdrop.addEventListener("drop", (e) => { e.preventDefault(); tdrop.classList.remove("over"); const f = [...e.dataTransfer.files]; if (f.length) askWhere(`Track: ${nFiles(f)}.`).then(async (w) => { if (w) { await importTracks(f); goStage(w.stage, "GPX importado"); } }); });
 // the route picker by "Ver track": show only one route of the stage, or delete it
 function renderTrkPick() {
   const list = stageTracks().sort((a, b) => natural(a.name, b.name));
@@ -1814,11 +1826,11 @@ async function importWaypointFiles(files) {
       (bad.length ? " No se pudo: " + bad.join("; ") : "");
   } catch (err) { msg.textContent = writeErr(err); }
 }
-$("gpxFile").addEventListener("change", async (e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length && await askWhere(`Waypoints: ${nFiles(f)}.`)) importWaypointFiles(f); });
+$("gpxFile").addEventListener("change", async (e) => { const f = [...e.target.files]; e.target.value = ""; const w = f.length && await askWhere(`Waypoints: ${nFiles(f)}.`); if (w) { await importWaypointFiles(f); goStage(w.stage, "GPX importado"); } });
 const wdrop = $("wptDrop");
 wdrop.addEventListener("dragover", (e) => { e.preventDefault(); wdrop.classList.add("over"); });
 wdrop.addEventListener("dragleave", () => wdrop.classList.remove("over"));
-wdrop.addEventListener("drop", (e) => { e.preventDefault(); wdrop.classList.remove("over"); const f = [...e.dataTransfer.files]; if (f.length) askWhere(`Waypoints: ${nFiles(f)}.`).then((ok) => ok && importWaypointFiles(f)); });
+wdrop.addEventListener("drop", (e) => { e.preventDefault(); wdrop.classList.remove("over"); const f = [...e.dataTransfer.files]; if (f.length) askWhere(`Waypoints: ${nFiles(f)}.`).then(async (w) => { if (w) { await importWaypointFiles(f); goStage(w.stage, "GPX importado"); } }); });
 
 /* ---------- export ---------- */
 const xe = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));

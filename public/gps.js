@@ -30,6 +30,8 @@ const card = (d) => ["N", "NE", "E", "SE", "S", "SO", "O", "NO"][Math.round(d / 
 // beeps with the phone's speaker; the sound is unlocked when «Iniciar ruta» is tapped
 let actx = null;
 const audioOn = () => { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {} };
+// browsers only allow sound after a tap: the first touch anywhere turns it on
+["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, audioOn, { capture: true, passive: true }));
 function beep(times, ms, hz) {
   if (!actx) return;
   for (let i = 0; i < times; i++) {
@@ -144,7 +146,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
   function stopWatch() {
     if (watch !== null) navigator.geolocation.clearWatch(watch);
-    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; hdg.hidden = true; ui();
+    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; hdg.hidden = true; wpb.hidden = true; ui();
   }
 
   function drawRec() {
@@ -213,6 +215,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   window.addEventListener("online", sendPending);
 
   $("gpsBtn").onclick = () => {
+    audioOn(); // the beeps need a tap to be allowed
     if (watch === null) { follow = true; zoomIn = true; startWatch(); }
     else if (!follow) { follow = true; zoomIn = true; if (last) draw(last); ui(); }
     else if (!rec) stopWatch();
@@ -298,27 +301,33 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     hdg.innerHTML = course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
       : `<b>Rumbo</b>${arrowSvg(course + bear(), "#1a73e8")}<span class="big">${String(Math.round(course) % 360).padStart(3, "0")}°</span><small>${card(course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
   }
+  // waypoint alerts whenever the GPS is on: 50 m one short beep, 20 m two short beeps, 5 m one long beep (taken)
+  const nav = { taken: new Set(), level: new Map(), lastTaken: null };
+  const NEAR2 = 20;
   function checkNav(p) {
     showHdg(p);
-    if (!fol || p.coords.accuracy > MAX_ACC) return;
+    if (p.coords.accuracy > MAX_ACC) return;
     const here = [p.coords.latitude, p.coords.longitude];
-    fol.course = course;
+    if (fol) fol.course = course;
     // the nearest waypoint of the stage not taken yet
     let best = null;
     for (const w of waypoints()) {
-      if (fol.taken.has(w.id)) continue;
+      if (nav.taken.has(w.id)) continue;
       const d = meters(here, [w.lat, w.lon]);
+      // gone well away from one: it warns again when coming back
+      if (d > NEAR + 30) nav.level.delete(w.id);
       if (!best || d < best.d) best = { w, d };
     }
-    if (!best || best.d > NEAR) { wpb.hidden = !fol.lastTaken || Date.now() - fol.lastTaken.at > 8000; if (!wpb.hidden) wpb.innerHTML = `<span class="ok">✓ WP ${fol.lastTaken.name} cogido</span>`; return; }
-    const w = best.w, b = brg(here, [w.lat, w.lon]);
+    if (!best || best.d > NEAR) { wpb.hidden = !nav.lastTaken || Date.now() - nav.lastTaken.at > 8000; if (!wpb.hidden) wpb.innerHTML = `<span class="ok">✓ WP ${nav.lastTaken.name} cogido</span>`; return; }
+    const w = best.w, b = brg(here, [w.lat, w.lon]), lv = nav.level.get(w.id) || 0;
     if (best.d <= TAKEN) {
-      fol.taken.add(w.id); fol.lastTaken = { name: w.name, at: Date.now() };
-      beep(1, 900, 1320); try { navigator.vibrate && navigator.vibrate(600); } catch (e) {}
+      nav.taken.add(w.id); nav.lastTaken = { name: w.name, at: Date.now() };
+      beep(1, 1000, 1320); try { navigator.vibrate && navigator.vibrate(800); } catch (e) {}
       wpb.hidden = false; wpb.innerHTML = `<span class="ok">✓ WP ${w.name} cogido${w.pts ? " · " + w.pts + " pts" : ""}</span>`;
       return;
     }
-    if (fol.warned !== w.id) { fol.warned = w.id; beep(3, 140, 880); try { navigator.vibrate && navigator.vibrate([150, 80, 150]); } catch (e) {} }
+    if (best.d <= NEAR2 && lv < 2) { nav.level.set(w.id, 2); beep(2, 150, 880); try { navigator.vibrate && navigator.vibrate([150, 100, 150]); } catch (e) {} }
+    else if (lv < 1) { nav.level.set(w.id, 1); beep(1, 150, 880); try { navigator.vibrate && navigator.vibrate(150); } catch (e) {} }
     // turned by the map's own rotation, so the arrow points straight at the waypoint on screen
     wpb.hidden = false;
     wpb.innerHTML = `${arrowSvg(b + bear(), "#c62828")}<div><b>WP ${w.name}${w.pts ? " · " + w.pts + " pts" : ""}</b><span class="big">${Math.round(best.d)} m</span><small>rumbo ${String(Math.round(b) % 360).padStart(3, "0")}° ${card(b)}</small></div>`;
@@ -350,6 +359,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   }
   $("gpsMeasure").onclick = measureHere;
   $("recBtn").onclick = () => {
+    audioOn();
     if (fol) { stopFollow(); if (rec) stopRec(); return; }
     if (rec) { say("Ruta terminada"); stopRec(); return; }
     // with a route for the stage: follow it (and record, for those who can edit); without one: just record

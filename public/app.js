@@ -5,6 +5,9 @@ import { setupCoches } from "./coches.js";
 import { setupGps } from "./gps.js";
 import { buildGraph, matrix, proposals, geometry, nearRoute, addTo, satImage, meters } from "./rutas.js";
 
+// the map's pieces drawn one pixel bigger, so no thin lines show between them (rotating the map leaves hairline gaps)
+{ const init = L.GridLayer.prototype._initTile;
+  L.GridLayer.include({ _initTile(tile) { init.call(this, tile); const t = this.getTileSize(); tile.style.width = t.x + 1 + "px"; tile.style.height = t.y + 1 + "px"; } }); }
 const CFG = window.APP_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
 

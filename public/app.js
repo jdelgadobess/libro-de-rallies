@@ -600,9 +600,9 @@ function setAppMenu(open) {
 $("appMenuBtn").onclick = () => setAppMenu(!$("appMenu").classList.contains("open"));
 function appStart() {
   document.body.classList.add("app");
-  // «Trabajar sin conexión» goes with the maps, inside «Ajustes»
-  const off = document.querySelector(".boxhead .offtoggle"); if (off) $("lyBox").querySelector(".layersbar").prepend(off);
   $("lyBox").open = false;
+  // the globe (with or without connection) goes on the map itself, bottom right
+  const off = document.querySelector(".boxhead .offtoggle"); if (off) off.closest(".mapbox").append(off);
   setTab("libro"); setMapFull(true);
   // what the imports say shows in the menu too
   const mirror = (id) => new MutationObserver(() => { const t = $(id).textContent; if (t) $("appMsg").textContent = t; }).observe($(id), { childList: true, characterData: true, subtree: true });

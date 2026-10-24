@@ -646,3 +646,20 @@ body.app .mapbox.full #fullStatus { order: 5; white-space: nowrap; overflow: hid
   body.app .mapbox.full #mapMenuBtn { order: 3 }
   body.app .mapbox.full .recctl { order: 4 }
 }
+/* app top bar: año, etapa, tipo on the left; record / pause / stop in the middle; «Menú» and the cog at the far right */
+body.app .mapbox.full #fullStatus:empty { display: none }
+@media (min-width: 521px) {
+  body.app .mapbox.full #fullStatus { order: 2; flex: 0 1 auto; max-width: 12em }
+  body.app .mapbox.full .recctl { order: 3; margin: 0 auto }
+  body.app .mapbox.full #appMenuBtn { order: 4; margin-left: 0 }
+  body.app .mapbox.full #mapMenuBtn { order: 5 }
+}
+@media (min-width: 900px) {
+  body.app .mapbox.full .boxhead { position: relative }
+  body.app .mapbox.full .recctl { position: absolute; left: 50%; top: 50%; transform: translate(-50%, calc(-50% - 3px)); margin: 0 }
+  body.app .mapbox.full #appMenuBtn { margin-left: auto }
+}
+/* the globe (with or without connection) sits on the map, bottom right */
+body.app .mapbox.full .offtoggle { position: absolute; right: 12px; bottom: 44px; z-index: 1100; margin: 0; background: rgba(255,255,255,.92); border-radius: 50%; width: 52px; height: 52px; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.35) }
+body.app .mapbox.full .offtoggle span { padding: 0 }
+body.app .mapbox.full .offtoggle .offtxt { display: none }

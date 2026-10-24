@@ -611,6 +611,9 @@ function appStart() {
 }
 // the full web was chosen on a touch screen: a button brings the app back
 try { if (localStorage.getItem("rally.web") === "1" && window.matchMedia && matchMedia("(pointer: coarse)").matches) document.body.classList.add("webtouch"); } catch (e) {}
+// the app opens the web's «Planificador de rutas» (same plans, saved in the same place) and comes back to the map
+$("appPlanBtn").onclick = () => { setMapFull(false); setTab("plan"); window.scrollTo(0, 0); };
+$("appPlanBack").onclick = () => { setTab("libro"); setMapFull(true); };
 $("appBack").onclick = () => { try { localStorage.removeItem("rally.web"); } catch (e) {} location.reload(); };
 $("appWeb").onclick = () => { try { localStorage.setItem("rally.web", "1"); } catch (e) {} location.reload(); };
 $("appPhotoGpx").onclick = () => $("photoGpx").click();

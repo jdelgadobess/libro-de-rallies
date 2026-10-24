@@ -663,3 +663,23 @@ body.app .mapbox.full #fullStatus:empty { display: none }
 body.app .mapbox.full .offtoggle { position: absolute; right: 12px; bottom: 44px; z-index: 1100; margin: 0; background: rgba(255,255,255,.92); border-radius: 50%; width: 52px; height: 52px; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.35) }
 body.app .mapbox.full .offtoggle span { padding: 0 }
 body.app .mapbox.full .offtoggle .offtxt { display: none }
+/* app: «Planificador» next to «Menú»; in the planner, a button back to the map */
+#appPlanBtn, #appPlanBack { display: none }
+body.app .mapbox.full #appPlanBtn { display: inline-flex; order: 3 }
+@media (min-width: 521px) { body.app .mapbox.full #appPlanBtn { order: 4 } body.app .mapbox.full #appMenuBtn { order: 4 } }
+@media (min-width: 900px) { body.app .mapbox.full #appPlanBtn { margin-left: auto } body.app .mapbox.full #appMenuBtn { margin-left: 0 } }
+@media (max-width: 520px) { body.app .mapbox.full #appPlanBtn .lbl { display: none } body.app .mapbox.full #appPlanBtn { font-size: 1.25rem; padding: 6px 10px; order: 2 } }
+body.app:not(.mapfull) #appPlanBack { display: block; position: sticky; top: 0; z-index: 2000; width: 100%; padding: 12px; font-size: 1rem; border-radius: 0 }
+body.app:not(.mapfull) .tabs { display: none }
+/* app planner: the proposals first; year and stage are already above the map */
+body.app.tab-plan:not(.mapfull) .desk > .col:first-child { display: flex; flex-direction: column; gap: 22px }
+body.app.tab-plan:not(.mapfull) #planPanel { order: -1 }
+body.app.tab-plan:not(.mapfull) #yearBox { display: none }
+/* phone: año, etapa and tipo on the first row; record controls, Planificador, Menú and the cog on the second */
+@media (max-width: 520px) {
+  body.app .mapbox.full .mapsel { flex-basis: 100% }
+  body.app .mapbox.full .recctl { order: 2 }
+  body.app .mapbox.full #appPlanBtn { order: 3; margin-left: auto }
+  body.app .mapbox.full #appMenuBtn { order: 4; margin-left: 0 }
+  body.app .mapbox.full #mapMenuBtn { order: 5 }
+}

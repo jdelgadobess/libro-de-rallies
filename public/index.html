@@ -65,6 +65,7 @@
   </section>
 
   <div id="app" hidden>
+  <button type="button" class="hl" id="appPlanBack">🗺️ Volver al mapa</button>
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" id="tabLibro" aria-selected="true">Libro de ruta</button>
     <button type="button" role="tab" id="tabPlan" aria-selected="false">Planificador de rutas</button>
@@ -233,6 +234,7 @@
           <button type="button" class="ghost" id="mapFull" title="Ver el mapa en grande (Esc para salir)">⛶ Pantalla completa</button>
           <label class="offtoggle" title="En color: con conexión. En gris: sin conexión (solo los mapas guardados en este dispositivo, sin gastar datos). Pulsa para cambiar."><input type="checkbox" id="offMode" aria-label="Trabajar sin conexión"><span><b class="globe" aria-hidden="true">🌍</b><i class="offtxt"></i></span></label>
           <button type="button" class="hl" id="mapMenuBtn" aria-expanded="false" aria-controls="mapMenu">☰ Menú</button>
+          <button type="button" class="hl" id="appPlanBtn" title="Planificador de rutas">🧭<span class="lbl"> Planificador</span></button>
           <button type="button" class="hl" id="appMenuBtn" aria-expanded="false" aria-controls="appMenu">☰<span class="lbl"> Menú</span></button>
           <button type="button" class="ghost" id="appBack">📱 Volver a la app</button>
           <span class="rec" id="fullStatus"></span>
@@ -304,7 +306,7 @@
           <span id="lyDl"></span>
           <span id="lyZones"></span>
           <span class="msg" id="lyMsg"></span>
-          <span class="msg ver">Versión 103</span>
+          <span class="msg ver">Versión 104</span>
         </div>
         </details>
         </div>

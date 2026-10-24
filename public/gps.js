@@ -304,8 +304,27 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   [hdg, wpb].forEach((d) => { L.DomEvent.disableClickPropagation(d); map.getContainer().append(d); });
   const arrowSvg = (deg, color) => `<svg viewBox="0 0 40 40" style="transform:rotate(${Math.round(deg)}deg)"><path d="M20 3 L31 33 L20 26 L9 33 Z" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
   // the course box shows whenever the GPS is on, following a route or not
+  // speed limit chosen in «Ajustes»: over it, three quick beeps every few seconds and the box turns red; empty: never
+  const spdIn = $("spdMax");
+  try { spdIn.value = localStorage.getItem("rally.spdMax") || ""; } catch (e) {}
+  spdIn.addEventListener("change", () => { try { localStorage.setItem("rally.spdMax", spdIn.value); } catch (e) {} });
+  let spdBeep = 0;
+  function checkSpeed(kmh) {
+    const max = parseFloat(spdIn.value), over = max > 0 && kmh > max;
+    hdg.classList.toggle("fast", over);
+    if (over && Date.now() - spdBeep > 4000) { spdBeep = Date.now(); beep(3, 110, 1700); }
+  }
+  // the speed the GPS gives; some phones give none: then from the distance since the last fix
+  let sPrev = null, sCalc = 0;
+  function speedOf(p) {
+    const here = [p.coords.latitude, p.coords.longitude], t = p.timestamp || Date.now();
+    if (sPrev && t - sPrev.t >= 1000 && p.coords.accuracy <= MAX_ACC) { sCalc = meters(sPrev.ll, here) / ((t - sPrev.t) / 1000); sPrev = { ll: here, t }; }
+    else if (!sPrev || t - sPrev.t > 30000) sPrev = { ll: here, t };
+    return p.coords.speed !== null && p.coords.speed !== undefined && !Number.isNaN(p.coords.speed) ? p.coords.speed : sCalc;
+  }
   function showHdg(p) {
-    const spd = p.coords.speed || 0;
+    const spd = speedOf(p);
+    checkSpeed(spd * 3.6);
     hdg.hidden = false;
     hdg.innerHTML = course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
       : `<b>Rumbo</b>${arrowSvg(course + bear(), "#1a73e8")}<span class="big">${String(Math.round(course) % 360).padStart(3, "0")}°</span><small>${card(course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;

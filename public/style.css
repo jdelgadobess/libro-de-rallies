@@ -693,3 +693,8 @@ body.app.tab-plan:not(.mapfull) #stageBox { order: -2 }
   body.app.tab-plan:not(.mapfull) .desk .mapbox { order: -2; min-width: 0; max-width: 100% }
   body.app.tab-plan:not(.mapfull) #planPanel { order: -1 }
 }
+/* speed limit in «Ajustes»; over it the course box turns red */
+.spdmax { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .95rem; text-transform: none; letter-spacing: normal }
+.spdmax input { width: 5.5em; padding: 8px; font-size: 1rem }
+.spdmax small { color: var(--muted) }
+.navbox.hdg.fast { background: rgba(200,20,20,.92) }

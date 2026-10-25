@@ -1,10 +1,18 @@
 // Keeps the page, its libraries and the map tiles already seen, so the program opens without internet.
-const APP = "libro-app-v112", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", ZONES = "libro-zonas", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
+const APP = "libro-app-v113", LIBS = "libro-libs-v1", TILES = "libro-tiles-v1", ZONES = "libro-zonas", MAX_TILES = 20000; // about 500 MB of satellite seen before the trip
 const SHELL = ["./", "index.html", "app.js", "mapas.js", "rutas.js", "mecanica.js", "coches.js", "gps.js", "style.css", "config.js", "manifest.webmanifest", "img/icono-192.png", "img/fondo.jpg"];
 const LIB_HOSTS = ["cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 const TILE_HOSTS = /(^|\.)(arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org|tiles\.maps\.eox\.at|www\.ign\.es)$/;
 
-self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL)).catch(() => {})); });
+// the libraries the map and «Proponer ruta» need, kept from the start so they work without internet even if never used before
+const LIB_PRE = ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", "https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js",
+  "https://cdn.jsdelivr.net/npm/pmtiles@4.4.1/dist/pmtiles.js", "https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/protomaps-leaflet.js",
+  "https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js", "https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.wasm"];
+async function preLibs() {
+  const c = await caches.open(LIBS);
+  for (const u of LIB_PRE) { if (await c.match(u)) continue; try { const r = await fetch(u); if (r.ok) await c.put(u, r); } catch (e) {} }
+}
+self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(Promise.all([caches.open(APP).then((c) => c.addAll(SHELL)).catch(() => {}), preLibs().catch(() => {})])); });
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (![APP, LIBS, TILES, ZONES].includes(k)) await caches.delete(k);
   await self.clients.claim();
@@ -23,7 +31,7 @@ async function networkFirst(req, name, trim) {
   }
 }
 async function cacheFirst(req) {
-  const c = await caches.open(LIBS), hit = await c.match(req);
+  const c = await caches.open(LIBS), hit = await c.match(req, { ignoreVary: true });
   if (hit) return hit;
   const res = await fetch(req);
   if (res.ok || res.type === "opaque") c.put(req, res.clone());

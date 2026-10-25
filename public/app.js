@@ -1622,7 +1622,9 @@ $("pRun").onclick = async () => {
     const far = sn.filter((s) => s.d > 1000).length;
     msg.textContent = `${plan.alts.length} propuestas con ${Math.round(share * 100)} % de los waypoints, de ${st ? st.name + (st.desc ? " (" + st.desc + ")" : "") : wps[0].name + " (no encuentro la SALIDA)"} a ${fin ? fin.name + (fin.desc ? " (" + fin.desc + ")" : "") : wps[wps.length - 1].name + " (no encuentro la LLEGADA)"}.` + (far ? ` ${far} waypoint${far > 1 ? "s están" : " está"} a más de 1 km de cualquier pista.` : "");
     renderPlan(); renderMap(); if (lmap) lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
-    await satFill(wps, msg);
+    // with internet the satellite fills the stretches with no way on the map; without it, they stay in a straight line
+    if (netDown()) msg.textContent += (plan.alts.some((a) => a.gaps.length) ? " Sin conexión: los tramos sin camino en el mapa van en línea recta (con internet los busco en el satélite)." : "");
+    else await satFill(wps, msg);
     await savePlan(msg.textContent);
   } catch (e) { msg.textContent = "No se pudo calcular: " + ((e && e.message) || e); if (!plan.alts.length) plan.alts = own; }
   finally { plan.busy = false; renderPlan(); }

@@ -334,6 +334,24 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   // waypoint alerts whenever the GPS is on: 50 m one short beep, 20 m two short beeps, 5 m one long beep (taken)
   const nav = { taken: new Set(), level: new Map(), lastTaken: null };
   const NEAR2 = 20;
+  /* ---------- «Llévame»: guided to one waypoint, with an arrow, the distance and a line to it ---------- */
+  let goTo = null;
+  const goLayer = L.layerGroup().addTo(map);
+  const fmtD = (d) => d < 1000 ? Math.round(d) + " m" : (d / 1000).toFixed(d < 10000 ? 2 : 1).replace(".", ",") + " km";
+  function showGo(here) {
+    goLayer.clearLayers(); if (!goTo) return false;
+    const t = [goTo.lat, goTo.lon], d = meters(here, t), b = brg(here, t);
+    if (d <= TAKEN) {
+      say(`Has llegado al waypoint ${goTo.name}`); beep(1, 1000, 1320);
+      wpb.hidden = false; wpb.innerHTML = `<span class="ok">✓ Has llegado a WP ${goTo.name}</span>`; goTo = null; return true;
+    }
+    L.polyline([here, t], { color: "#1a73e8", weight: 4, dashArray: "8 8", interactive: false }).addTo(goLayer);
+    L.circleMarker(t, { radius: 11, color: "#1a73e8", weight: 3, fill: false, interactive: false }).addTo(goLayer);
+    wpb.hidden = false;
+    wpb.innerHTML = `${arrowSvg(b + bear(), "#1a73e8")}<div><b>Llévame a WP ${goTo.name}${goTo.pts ? " · " + goTo.pts + " pts" : ""}</b><span class="big">${fmtD(d)}</span><small>rumbo ${String(Math.round(b) % 360).padStart(3, "0")}° ${card(b)}</small></div><button type="button" class="gox" aria-label="Dejar de ir a este waypoint">✕</button>`;
+    wpb.querySelector(".gox").onclick = () => { goTo = null; goLayer.clearLayers(); wpb.hidden = true; say("Vale"); };
+    return true;
+  }
   function checkNav(p) {
     showHdg(p);
     if (p.coords.accuracy > MAX_ACC) return;
@@ -348,10 +366,12 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
       if (d > NEAR + 30) nav.level.delete(w.id);
       if (!best || d < best.d) best = { w, d };
     }
+    if ((!best || best.d > NEAR) && showGo(here)) return;
     if (!best || best.d > NEAR) { wpb.hidden = !nav.lastTaken || Date.now() - nav.lastTaken.at > 8000; if (!wpb.hidden) wpb.innerHTML = `<span class="ok">✓ WP ${nav.lastTaken.name} cogido</span>`; return; }
     const w = best.w, b = brg(here, [w.lat, w.lon]), lv = nav.level.get(w.id) || 0;
     if (best.d <= TAKEN) {
       nav.taken.add(w.id); nav.lastTaken = { name: w.name, at: Date.now() };
+      if (goTo && goTo.id === w.id) { goTo = null; goLayer.clearLayers(); say(`Has llegado al waypoint ${w.name}`); }
       beep(1, 1000, 1320); try { navigator.vibrate && navigator.vibrate(800); } catch (e) {}
       wpb.hidden = false; wpb.innerHTML = `<span class="ok">✓ WP ${w.name} cogido${w.pts ? " · " + w.pts + " pts" : ""}</span>`;
       return;
@@ -449,5 +469,13 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   sendPending();
   ui();
   // the map is wanted somewhere else (a stage picked): stop following my position
-  return { lookAway() { hold = true; if (follow) { follow = false; ui(); } } };
+  return {
+    lookAway() { hold = true; if (follow) { follow = false; ui(); } },
+    here: () => (last ? [last.coords.latitude, last.coords.longitude] : null),
+    goTo(w) {
+      audioOn(); goTo = w; say(`Te llevo al waypoint ${w.name}`);
+      if (watch === null) { follow = true; hold = false; zoomIn = true; startWatch(); }
+      else { follow = true; hold = false; if (last) { map.fitBounds([[last.coords.latitude, last.coords.longitude], [w.lat, w.lon]], { padding: [60, 60] }); checkNav(last); } ui(); }
+    },
+  };
 }

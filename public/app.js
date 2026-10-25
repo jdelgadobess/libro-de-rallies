@@ -682,6 +682,7 @@ $("appGpx").addEventListener("change", async (e) => {
 // the stage's waypoints, each one on or off the map
 function renderAppWps() {
   if (!APP) return;
+  renderAppGo();
   const list = visibleWps(), ul = $("appWpList"); ul.textContent = "";
   $("appWpSum").textContent = state.stageFilter === "all" ? "📍 Waypoints (elige la etapa)" : `📍 Waypoints: ${list.filter((w) => !filt.off.has(w.id)).length} de ${list.length} en el mapa`;
   list.forEach((w) => {
@@ -691,6 +692,21 @@ function renderAppWps() {
     lb.append(cb, ` ${w.name}${w.pts ? " · " + w.pts + " pts" : ""}${w.desc ? " · " + w.desc : ""}`); li.append(lb); ul.append(li);
   });
 }
+// «Llévame»: the stage's waypoints; a tap and the GPS guides me there
+function renderAppGo() {
+  const ul = $("appGoList"); ul.textContent = "";
+  const st = state.stageFilter, list = st === "all" || st === "" ? [] : rallyWps().filter((w) => stageKey(w) === st).sort(wpOrder);
+  const here = gpsApi && gpsApi.here();
+  $("appGoSum").textContent = list.length ? `🧭 Llévame a un waypoint (${list.length})` : "🧭 Llévame (elige la etapa)";
+  list.forEach((w) => {
+    const li = document.createElement("li"), b = document.createElement("button"); b.type = "button";
+    const d = here ? distKm({ lat: here[0], lon: here[1] }, w) : null;
+    b.textContent = `${w.name}${w.pts ? " · " + w.pts + " pts" : ""}${w.desc ? " · " + w.desc : ""}${d !== null ? " · " + fmtKm(d) : ""}`;
+    b.onclick = () => { if (!gpsApi) return; gpsApi.goTo({ id: w.id, name: w.name, lat: w.lat, lon: w.lon, pts: w.pts }); setMenu(false); };
+    li.append(b); ul.append(li);
+  });
+}
+$("appGoBox").addEventListener("toggle", () => { if ($("appGoBox").open) renderAppGo(); });
 $("appWpAll").onclick = () => $("fAll").click();
 $("appWpNone").onclick = () => $("fNone").click();
 // what is going on (recording, following a route) stays in sight with the menu closed

@@ -703,3 +703,8 @@ body.app.tab-plan:not(.mapfull) #stageBox { order: -2 }
 #measureSum { background: rgba(20,14,8,.85); color: #fff; border-radius: 6px; padding: 8px 10px; font: 700 .9rem var(--mono); box-shadow: 0 1px 4px rgba(0,0,0,.3) }
 #measureSum:empty { display: none }
 .leaflet-container:has(#measureCtl:not([hidden])) .navbox.hdg { top: auto; bottom: 110px }
+/* «Llévame»: one button per waypoint; the guide box can be closed */
+body.app .golist button { width: 100%; text-align: left; padding: 12px; font-size: 1rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; color: inherit; font-weight: 600; text-transform: none; letter-spacing: normal }
+body.app .golist li { border-bottom: 0; padding: 4px 0 }
+.navbox .gox { background: transparent; border: 1px solid rgba(255,255,255,.5); color: #fff; border-radius: 50%; width: 34px; height: 34px; padding: 0; font-size: 1rem; flex: none }
+.navbox .big { white-space: nowrap }

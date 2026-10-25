@@ -221,6 +221,32 @@ export async function offroadMap(at) {
 }
 
 /* ---------- the layers on the Leaflet map ---------- */
+// zoomed in past what this device keeps (or what the server has): the tile of a lower zoom, stretched, instead of a blank square.
+// Each tile is a canvas with its own piece of the lower tile (a stretched picture would be too big for the phone to draw)
+const cropInto = (cv, img, coords, fb) => {
+  const k = 2 ** fb, s = img.naturalWidth / k, sx = (coords.x - ((coords.x >> fb) << fb)) * s, sy = (coords.y - ((coords.y >> fb) << fb)) * s;
+  const g = cv.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(img, sx, sy, s, s, 0, 0, cv.width, cv.height);
+};
+const tileCanvas = (T) => { const cv = document.createElement("canvas"), r = Math.min(2, window.devicePixelRatio || 1); cv.width = cv.height = Math.round(T * r); return cv; };
+function overzoom(layer) {
+  layer.createTile = function (coords, done) {
+    // the tile is a box: the picture itself when the server or this device has it, a canvas with a stretched piece of a lower zoom when not
+    const box = document.createElement("div"), T = this.getTileSize().x, zU = this._getZoomForUrl(), co = this.options.crossOrigin;
+    const tryAt = (fb) => {
+      const z = zU - fb; if (fb > 12 || z < 0) { done(new Error("sin imagen"), box); return; }
+      const img = new Image(), x = coords.x >> fb, y = coords.y >> fb; img.alt = "";
+      if (co || co === "") img.crossOrigin = co === true ? "" : co;
+      img.onload = () => {
+        if (fb) { const cv = tileCanvas(T); cropInto(cv, img, coords, fb); box.append(cv); } else box.append(img);
+        done(null, box);
+      };
+      img.onerror = () => tryAt(fb + 1);
+      img.src = L.Util.template(this._url, L.extend({ s: this._getSubdomain(coords), r: "", x, y, z }, this.options));
+    };
+    tryAt(0);
+    return box;
+  };
+}
 export function setupLayers(lmap) {
   const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
   const co = { crossOrigin: "anonymous" };
@@ -273,12 +299,16 @@ export function setupLayers(lmap) {
   const open = new Map(); // id -> { src, layer }
   const OfflineLayer = L.GridLayer.extend({
     createTile(c, done) {
-      const img = document.createElement("img"); img.alt = "";
-      let b = null; try { b = this.options.src.get(c.z, c.x, c.y); } catch (e) {}
-      if (!b) { setTimeout(() => done(null, img), 0); return img; }
-      const url = URL.createObjectURL(new Blob([b], { type: this.options.src.mime }));
-      img.onload = img.onerror = () => { URL.revokeObjectURL(url); done(null, img); };
-      img.src = url; return img;
+      const cv = tileCanvas(this.getTileSize().x);
+      let b = null, fb = 0;
+      // a tile missing at this zoom: the nearest lower zoom kept, stretched
+      for (; !b && fb <= 12 && c.z - fb >= 0; fb++) { try { b = this.options.src.get(c.z - fb, c.x >> fb, c.y >> fb); } catch (e) {} }
+      fb--;
+      if (!b) { setTimeout(() => done(null, cv), 0); return cv; }
+      const url = URL.createObjectURL(new Blob([b], { type: this.options.src.mime })), img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); cropInto(cv, img, c, fb); done(null, cv); };
+      img.onerror = () => { URL.revokeObjectURL(url); done(null, cv); };
+      img.src = url; return cv;
     },
   });
   // a .pmtiles of pictures (the slopes), read a tile at a time from the file kept here
@@ -441,7 +471,7 @@ export function setupLayers(lmap) {
   });
   // without a connection the online maps only show what this device already keeps (no data spent, no waiting)
   const online = [...Object.values(bases).filter((l) => l.setUrl), ...dlSat, ...sat.getLayers()];
-  online.forEach((l) => { l.options.home = l._url; });
+  online.forEach((l) => { l.options.home = l._url; overzoom(l); });
   function setOffline(on) {
     online.forEach((l) => { const u = on ? l.options.home + (l.options.home.includes("?") ? "&" : "?") + "lr_off=1" : l.options.home; if (l._url !== u) l.setUrl(u); });
   }

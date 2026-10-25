@@ -310,7 +310,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   [hdg, wpb].forEach((d) => { L.DomEvent.disableClickPropagation(d); map.getContainer().append(d); });
   const arrowSvg = (deg, color) => `<svg viewBox="0 0 40 40" style="transform:rotate(${Math.round(deg)}deg)"><path d="M20 3 L31 33 L20 26 L9 33 Z" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
   // the course box shows whenever the GPS is on, following a route or not
-  // speed limit chosen in «Ajustes»: over it, three quick beeps every few seconds and the box turns red; empty: never
+  // speed limit chosen in «Ajustes»: over it, a 2-second beep, repeated while still over, and the box turns red; 0 or empty: never
   const spdIn = $("spdMax");
   try { spdIn.value = localStorage.getItem("rally.spdMax") || ""; } catch (e) {}
   spdIn.addEventListener("change", () => { try { localStorage.setItem("rally.spdMax", spdIn.value); } catch (e) {} });
@@ -318,7 +318,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   function checkSpeed(kmh) {
     const max = parseFloat(spdIn.value), over = max > 0 && kmh > max;
     hdg.classList.toggle("fast", over);
-    if (over && Date.now() - spdBeep > 4000) { spdBeep = Date.now(); beep(3, 110, 1700); }
+    if (over && Date.now() - spdBeep > 6000) { spdBeep = Date.now(); beep(1, 2000, 1700); try { navigator.vibrate && navigator.vibrate(2000); } catch (e) {} }
   }
   // the speed the GPS gives; some phones give none: then from the distance since the last fix
   let sPrev = null, sCalc = 0;

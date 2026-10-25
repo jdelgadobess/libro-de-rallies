@@ -236,7 +236,9 @@ export function setupLayers(lmap) {
   const dlSat = [bases.s2, ...pnoa];
   bases.s2 = L.layerGroup(dlSat);
   const sat = L.layerGroup([
-    L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }),
+    // on sharp screens (phones, tablets, Mac) each tile is drawn at its real pixels from the next zoom level, like Google Maps,
+    // instead of blown up and blurry; past zoom 19 Esri has no imagery in many places, so the last level is stretched
+    L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { ...co, detectRetina: true, maxZoom: 20, maxNativeZoom: 18, keepBuffer: 4, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" }),
     L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { ...co, maxZoom: 19 }),
   ]);
   lmap.createPane("base", lmap._rotatePane).style.zIndex = 200;
@@ -253,7 +255,7 @@ export function setupLayers(lmap) {
 
   const pref = (() => { try { return JSON.parse(localStorage.getItem("rally.layers")) || {}; } catch (e) { return {}; } })();
   const save = () => { try { localStorage.setItem("rally.layers", JSON.stringify(pref)); } catch (e) {} };
-  pref.base = pref.base || "osm"; if (pref.sat === undefined) pref.sat = true; if (pref.op === undefined) pref.op = 100; pref.on = pref.on || [];
+  if (!pref.base || pref.base === "none") pref.base = "osm"; if (pref.sat === undefined) pref.sat = true; if (pref.op === undefined) pref.op = 100; pref.on = pref.on || [];
 
   const msg = (t) => { $("lyMsg").textContent = t || ""; };
   const apply = () => {

@@ -263,13 +263,15 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
   fol = null; // { route, thr, off, quiet, lastWarn, ownRec }
   const folLayer = L.layerGroup().addTo(map);
   const banner = document.createElement("div"); banner.className = "offroute"; banner.hidden = true;
-  banner.innerHTML = '<span id="offTxt"></span><button type="button" id="offOk">OK, no pasa nada</button>';
+  banner.innerHTML = '<span id="offTxt"></span><button type="button" id="offOk">🔇 Silenciar</button>';
   L.DomEvent.disableClickPropagation(banner); map.getContainer().append(banner);
-  banner.querySelector("#offOk").onclick = () => { if (fol) { fol.quiet = true; showOff(fol.lastD); say("De acuerdo"); } };
+  // «Silenciar»: no more spoken warnings for this route (until «Avisar» or the route ends)
+  banner.querySelector("#offOk").onclick = () => { if (!fol) return; fol.quiet = !fol.quiet; if (fol.quiet) { try { speechSynthesis.cancel(); } catch (e) {} } else { fol.lastWarn = 0; say("Avisos activados"); } showOff(fol.lastD); };
   function showOff(d) {
     banner.hidden = !fol || !fol.off;
     banner.classList.toggle("quiet", !!(fol && fol.quiet));
-    banner.querySelector("#offTxt").textContent = fol && fol.quiet ? `Fuera de la ruta: ${Math.round(d)} m (sin avisos hasta que vuelvas)` : `⚠ Te estás desviando: ${Math.round(d)} m de la ruta`;
+    banner.querySelector("#offTxt").textContent = fol && fol.quiet ? `🔇 Fuera de la ruta: ${Math.round(d)} m (avisos en silencio)` : `⚠ Te estás desviando: ${Math.round(d)} m de la ruta`;
+    banner.querySelector("#offOk").textContent = fol && fol.quiet ? "🔔 Avisar" : "🔇 Silenciar";
   }
   function followUi() {
     ui();
@@ -287,14 +289,14 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
       L.polyline([here, n.at], { color: "#c62828", weight: 4, dashArray: "8 6", interactive: false })
         .bindTooltip(`${Math.round(n.d)} m a la ruta`, { permanent: true, direction: "center", className: "wp-lbl dist" }).addTo(folLayer);
       L.circleMarker(n.at, { radius: 6, color: "#fff", weight: 2, fillColor: "#c62828", fillOpacity: 1, interactive: false }).addTo(folLayer);
-      if (!fol.off) { fol.off = true; fol.quiet = false; fol.lastWarn = 0; }
+      if (!fol.off) { fol.off = true; fol.lastWarn = 0; }
       if (!fol.quiet && Date.now() - fol.lastWarn > 45000) {
         fol.lastWarn = Date.now(); say(`Te estás desviando. ${Math.round(n.d)} metros de la ruta`);
         try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch (e) {}
       }
       showOff(n.d);
     } else if (fol.off && n.d <= fol.thr * 0.7) {
-      fol.off = false; fol.quiet = false; showOff(0); say("De nuevo en la ruta");
+      fol.off = false; showOff(0); if (!fol.quiet) say("De nuevo en la ruta");
     } else if (fol.off) showOff(n.d);
   }
   /* ---------- while following: the course in a box, and each waypoint announced at 50 m and taken at 5 m ---------- */

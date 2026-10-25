@@ -166,14 +166,50 @@ async function offlineBoot() {
   offline = true;
   let snap = null; try { snap = await idb.get("kv", "snap"); } catch (e) {}
   if (!snap) { gate("Sin conexión", "No hay internet y este dispositivo aún no tiene copia. Abre la web una vez con conexión y quedará guardada."); return; }
-  Object.assign(state, { user: { email: snap.email }, role: "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks });
+  // the same person, role, years, stages and routes as the last time with internet
+  Object.assign(state, { user: { email: snap.email }, role: snap.role || "offline", rallies: snap.rallies, wps: snap.wps, tracks: snap.tracks, stages: snap.stages || [] });
+  let last = {}; try { last = JSON.parse(localStorage.getItem("rally.last")) || {}; } catch (e) {}
+  const has = (id) => id && state.rallies.some((r) => r.id === id);
+  if (!state.rallyId && state.rallies.length) state.rallyId = has(last.rallyId) ? last.rallyId : has(snap.rallyId) ? snap.rallyId : ralliesSorted()[0].id;
+  if (last.rallyId === state.rallyId && last.stage) state.stageFilter = last.stage;
   $("userbar").hidden = false; $("uName").textContent = snap.email; $("uPhoto").hidden = true;
   $("gate").hidden = true; $("features").hidden = true; $("app").hidden = false;
-  document.body.classList.add("viewer-only-hide"); $("accBtn").hidden = true;
-  render(); loadMaps();
-  showNotice(`Sin conexión: ves la copia guardada el ${new Date(snap.at).toLocaleString("es")}. Los mapas sin conexión funcionan; para guardar cambios hace falta internet.`);
+  document.body.classList.toggle("viewer-only-hide", !canEdit()); $("accBtn").hidden = true;
+  render();
+  if (APP) appStart();
+  loadMaps();
+  showNotice(`Sin conexión: trabajas con la copia del ${new Date(snap.at).toLocaleString("es")} y los mapas descargados. El tipo de etapa, las propuestas y las grabaciones se guardan aquí y se suben al volver internet.`);
 }
-window.addEventListener("online", () => { if (offline) location.reload(); });
+// changes made without internet (stage types, proposals): kept on the device and sent when there is connection
+const netDown = () => offline || !navigator.onLine;
+const netErr = (error) => /fetch|network|Failed/i.test((error && error.message) || "");
+async function queueLater(x) {
+  let q = []; try { q = (await idb.get("kv", "pendingUp")) || []; } catch (e) {}
+  q.push(x); await idb.put("kv", q, "pendingUp").catch(() => {});
+}
+async function upsertLater(table, row) {
+  if (!netDown()) {
+    const { error } = await sb.from(table).upsert(row);
+    if (!error) return;
+    if (!netErr(error)) throw error;
+  }
+  await queueLater({ table, row });
+}
+async function deleteLater(table, id) {
+  if (!netDown()) {
+    const { error } = await sb.from(table).delete().eq("id", id);
+    if (!error) return;
+    if (!netErr(error)) throw error;
+  }
+  await queueLater({ table, del: id });
+}
+async function sendLater() {
+  let q = []; try { q = (await idb.get("kv", "pendingUp")) || []; } catch (e) {}
+  const left = [];
+  for (const x of q) { const { error } = x.del ? await sb.from(x.table).delete().eq("id", x.del) : await sb.from(x.table).upsert(x.row); if (error) left.push(x); }
+  await idb.put("kv", left, "pendingUp").catch(() => {});
+}
+window.addEventListener("online", async () => { if (offline) { await sendLater().catch(() => {}); location.reload(); } });
 if ("serviceWorker" in navigator) {
   // a new version takes over by itself: the page reloads once so the phone or tablet doesn't keep the old program
   const had = !!navigator.serviceWorker.controller; let reloaded = false;
@@ -199,7 +235,7 @@ async function loadAll() {
     try { const sg = await sb.from("stages").select("*"); if (!sg.error) state.stages = sg.data.map((x) => ({ rallyId: x.rally_id, stage: String(x.stage), kind: x.kind })); } catch (e) {}
     showNotice(""); render();
     // last copy kept on this device, to open the page without internet
-    idb.put("kv", { at: Date.now(), email: state.user.email, rallies: state.rallies, wps: state.wps, tracks: state.tracks }, "snap").catch(() => {});
+    idb.put("kv", { at: Date.now(), email: state.user.email, role: state.role, rallyId: state.rallyId, rallies: state.rallies, wps: state.wps, tracks: state.tracks, stages: state.stages || [] }, "snap").catch(() => {});
   } catch (e) { showNotice("No se pudo leer el registro (" + (e.code || e.message) + ")."); }
 }
 let reloadTimer;
@@ -230,6 +266,7 @@ async function boot(user) {
     .on("postgres_changes", { event: "*", schema: "public", table: "waypoints" }, reloadSoon)
     .on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, reloadSoon)
     .subscribe();
+  await sendLater().catch(() => {});
   await loadAll();
   if (role === "admin") loadMembers();
   if (APP) appStart();
@@ -429,7 +466,7 @@ $("mDel").onclick = async () => {
 // the stage's type: what the map shows for it (its track, or its waypoints)
 $("mKind").onchange = async (e) => {
   const st = state.stageFilter, kind = e.target.value; if (!kind || st === "all" || st === "") return;
-  try { must(await sb.from("stages").upsert({ rally_id: state.rallyId, stage: st, kind, created_by: state.user.email })); }
+  try { await upsertLater("stages", { rally_id: state.rallyId, stage: st, kind, created_by: state.user.email }); }
   catch (er) { showNotice(writeErr(er)); render(); return; }
   state.stages = (state.stages || []).filter((x) => !(x.rallyId === state.rallyId && x.stage === st)).concat({ rallyId: state.rallyId, stage: st, kind });
   render();
@@ -459,7 +496,12 @@ function pickStage(k) {
   $("stageNo").value = k === "all" ? "" : k;
   // picking a stage takes the map to it, even with the GPS somewhere else
   if (k !== "all") { if (gpsApi) gpsApi.lookAway(); fitKey = "pick"; }
+  try { localStorage.setItem("rally.last", JSON.stringify({ rallyId: state.rallyId, stage: k })); } catch (e) {}
   render();
+  // a stage with no type yet: the «Tipo» dropdown next to it asks for it
+  const mk = $("mKind");
+  if (k !== "all" && k !== "" && !stageKind(k) && canEdit()) { mk.classList.add("need"); showNotice(`La etapa ${k} aún no tiene tipo: elígelo en «Tipo», junto a la etapa.`); setTimeout(() => mk.classList.remove("need"), 6000); }
+  else mk.classList.remove("need");
 }
 $("fText").addEventListener("input", (e) => { filt.text = e.target.value.trim().toLowerCase(); refilter(); });
 $("fFrom").addEventListener("input", (e) => { filt.from = numOrNull(e.target.value); refilter(); });
@@ -585,7 +627,7 @@ $("mapMenuBtn").onclick = () => setMenu(!$("mapMenu").classList.contains("open")
 
 /* ---------- the app on the phone or tablet: the map fills the screen, with «Ajustes» and «Menú» on top ---------- */
 // on a touch screen, or opened from the home screen; «Ver la web completa» switches it off on this device
-const APP = (() => {
+let APP = (() => {
   try { if (localStorage.getItem("rally.web") === "1") return false; } catch (e) {}
   return !!(window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(pointer: coarse)").matches));
 })();
@@ -598,12 +640,15 @@ function setAppMenu(open) {
   if (open) setMenu(false);
 }
 $("appMenuBtn").onclick = () => setAppMenu(!$("appMenu").classList.contains("open"));
+let offHome = null, appInit = false;
 function appStart() {
   document.body.classList.add("app");
   $("lyBox").open = false;
   // the globe (with or without connection) goes on the map itself, bottom right
-  const off = document.querySelector(".boxhead .offtoggle"); if (off) off.closest(".mapbox").append(off);
+  const off = document.querySelector(".boxhead .offtoggle"); if (off) { offHome = { el: off, parent: off.parentNode, next: off.nextSibling }; off.closest(".mapbox").append(off); }
   setTab("libro"); setMapFull(true);
+  setMenu(false);
+  if (appInit) return; appInit = true;
   // what the imports say shows in the menu too
   const mirror = (id) => new MutationObserver(() => { const t = $(id).textContent; if (t) $("appMsg").textContent = t; }).observe($(id), { childList: true, characterData: true, subtree: true });
   ["photoMsg", "impMsg", "trkMsg", "notice"].forEach(mirror);
@@ -614,8 +659,14 @@ try { if (localStorage.getItem("rally.web") === "1" && window.matchMedia && matc
 // the app opens the web's «Planificador de rutas» (same plans, saved in the same place) and comes back to the map
 $("appPlanBtn").onclick = () => { setMapFull(false); setTab("plan"); window.scrollTo(0, 0); };
 $("appPlanBack").onclick = () => { setTab("libro"); setMapFull(true); };
-$("appBack").onclick = () => { try { localStorage.removeItem("rally.web"); } catch (e) {} location.reload(); };
-$("appWeb").onclick = () => { try { localStorage.setItem("rally.web", "1"); } catch (e) {} location.reload(); };
+// switching between the app and the full web happens on the spot, with or without internet
+$("appBack").onclick = () => { try { localStorage.removeItem("rally.web"); } catch (e) {} APP = true; document.body.classList.remove("webtouch"); appStart(); renderAppWps(); window.scrollTo(0, 0); };
+$("appWeb").onclick = () => {
+  try { localStorage.setItem("rally.web", "1"); } catch (e) {}
+  APP = false; setAppMenu(false); document.body.classList.remove("app"); document.body.classList.add("webtouch");
+  if (offHome && offHome.parent) offHome.parent.insertBefore(offHome.el, offHome.next);
+  setMapFull(false); setTab("libro"); setMenu(false); window.scrollTo(0, 0);
+};
 $("appPhotoGpx").onclick = () => $("photoGpx").click();
 // one GPX for everything: its waypoints and its track go to the stage asked for
 $("appGpx").addEventListener("change", async (e) => {
@@ -686,7 +737,8 @@ function renderMap() {
   if (showAlts && plan.stage === state.stageFilter && isCaza(state.stageFilter)) plan.alts.forEach((a, i) => {
     const on = plan.sel === i;
     if (on) L.polyline(a.pts, { color: "#000", weight: 8, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(a.pts, { color: altCol(i), weight: on ? 5 : 3, opacity: on ? 1 : .75, dashArray: on ? null : "6 6" })
+    // while drawing, a tap on a proposal is a point of the drawing, not a pick
+    L.polyline(a.pts, { color: altCol(i), weight: on ? 5 : 3, opacity: on ? 1 : .75, dashArray: on ? null : "6 6", interactive: !drawing })
       .bindTooltip(`Propuesta ${i + 1}: ${a.name}`).on("click", () => pickAlt(i)).addTo(layer);
     if (on) arrow(a.pts, altCol(i));
     // stretches with no way on the map: drawn as a dotted line so they are not taken for a track
@@ -1250,8 +1302,11 @@ async function saveTrack(name, segs, msgEl, wps = [], meta = null) {
     const row = { rally_id: state.rallyId, stage: st, name, points: segs, created_by: state.user.email };
     if (wps.length) row.wps = wps.map((w) => w.id);
     if (meta) row.meta = meta;
-    must(await sb.from("tracks").insert(row));
-    await loadAll();
+    if (netDown()) {
+      // without internet: on the map now, uploaded when there is connection
+      row.id = crypto.randomUUID(); row.created_at = new Date().toISOString();
+      await upsertLater("tracks", row); state.tracks.push(trackIn(row)); render();
+    } else { must(await sb.from("tracks").insert(row)); await loadAll(); }
     msgEl.textContent = `Guardado «${name}» (${kmOf(segs).toFixed(1)} km` + (wps.length ? `, ${wps.length} WP, ${sumPts(wps)} pts` : "") + `) como track de la etapa ${st}. Sale en el mapa y en el GPX de la etapa.`;
     return true;
   } catch (e) { msgEl.textContent = writeErr(e); return false; }
@@ -1340,8 +1395,7 @@ async function savePlan(note) {
   const alts = plan.alts.map(({ ids, wps, ...a }) => ({ ...a, wpIds: wps.map((w) => w.id) }));
   const row = { rally_id: state.rallyId, stage: state.stageFilter, alts, note, created_by: state.user.email, created_at: new Date().toISOString() };
   idb.put("kv", row, planKey()).catch(() => {});
-  const { error } = await sb.from("plans").upsert(row);
-  if (error) console.warn("plans", error.message);
+  try { await upsertLater("plans", row); } catch (e) { console.warn("plans", e.message); }
 }
 async function loadPlan() {
   if (state.stageFilter === "all" || !state.rallyId) return;
@@ -1350,13 +1404,32 @@ async function loadPlan() {
   const { data, error } = await sb.from("plans").select("*").eq("rally_id", state.rallyId).eq("stage", stage).maybeSingle();
   if (!error && data) { row = data; idb.put("kv", data, key).catch(() => {}); }
   else if (error) { try { row = await idb.get("kv", key); } catch (e) {} }
-  if (!row || !row.alts || !row.alts.length || plan.busy || plan.alts.length || planKey() !== key) return;
+  if (!row || !row.alts || !row.alts.length || plan.busy || plan.alts.length || planKey() !== key) { if (planKey() === key) adoptOpts(); return; }
   const byId = new Map(rallyWps().map((w) => [w.id, w]));
   plan.alts = row.alts.map((a) => { const wps = a.wpIds.map((id) => byId.get(id)).filter(Boolean); return { ...a, wps, ids: new Set(wps.map((w) => w.id)) }; });
   plan.sel = 0;
   $("pMsg").textContent = `Propuestas calculadas el ${new Date(row.created_at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}. Pulsa «Proponer ruta» para rehacerlas.` + (row.note ? " " + row.note.replace(/^\d+ propuestas[^.]*\.\s*/, "") : "");
   renderPlan(); renderMap(); renderFollow();
   if (lmap && state.tab === "plan") lmap.fitBounds(plan.alts[0].pts, { padding: [30, 30] });
+  adoptOpts();
+}
+// routes drawn before as «Opción 1, 2…» tracks join the proposals bar, like any route drawn by me
+async function adoptOpts() {
+  const st = state.stageFilter;
+  if (plan.adopting || !canEdit() || st === "all" || !isCaza(st) || plan.stage !== st) return;
+  const opts = optTracks(); if (!opts.length) return;
+  plan.adopting = true;
+  try {
+    opts.forEach((t) => {
+      const pts = t.segs.flat(), wps = trackWps(t);
+      plan.alts.push({ name: t.name, own: true, km: kmOf(t.segs), of: mapWps().length, extra: 0, sum: sumPts(wps), offKm: 0, satKm: 0, gapKm: 0, gaps: [], sat: [], pts, wps, ids: new Set(wps.map((w) => w.id)) });
+    });
+    if (plan.sel === null) plan.sel = 0;
+    await savePlan($("pMsg").textContent);
+    for (const t of opts) { await deleteLater("tracks", t.id); state.tracks = state.tracks.filter((x) => x.id !== t.id); }
+  } catch (e) { console.warn("adopt", e.message); }
+  plan.adopting = false;
+  render(); renderFollow();
 }
 function renderOwn() {
   const list = state.stageFilter === "all" ? [] : optTracks(), ul = $("pOwn"); ul.textContent = "";
@@ -1487,13 +1560,13 @@ async function delAlts(idx, all = false) {
   } catch (e) { altNote = writeErr(e); }
   renderPlan(); renderMap(); renderFollow();
 }
-async function confirmAlt(i) {
+async function confirmAlt(i, ask = true) {
   const a = plan.alts[i]; if (!a || !canEdit()) return;
-  if (!confirm(`¿Confirmas ${a.own ? "la " + a.name.toLowerCase() : `la propuesta ${i + 1}`} (${a.name}, ${a.km.toFixed(1)} km) como la ruta de la etapa ${state.stageFilter}?`)) return;
+  if (ask && !confirm(`¿Confirmas ${a.own ? "la " + a.name.toLowerCase() : `la propuesta ${i + 1}`} (${a.name}, ${a.km.toFixed(1)} km) como la ruta de la etapa ${state.stageFilter}?`)) return;
   altArmed = null;
   // one chosen route per stage: confirming another one replaces it
   const old = rallyTracks().filter((t) => stageKey(t) === state.stageFilter && isChosen(t));
-  try { for (const t of old) must(await sb.from("tracks").delete().eq("id", t.id)); } catch (e) { altNote = writeErr(e); renderAltBar(); return; }
+  try { for (const t of old) { await deleteLater("tracks", t.id); state.tracks = state.tracks.filter((x) => x.id !== t.id); } } catch (e) { altNote = writeErr(e); renderAltBar(); return; }
   const nm = a.own ? a.name : `Propuesta ${i + 1}: ${a.name}`;
   const ok = await saveTrack(nm, [a.pts], $("altMsg"), a.wps, { chosen: true, alt: nm });
   altNote = ok ? "" : $("altMsg").textContent;
@@ -1714,19 +1787,27 @@ $("nsForm").onsubmit = async (e) => {
 $("pDraw").onclick = () => {
   if (state.stageFilter === "all") { $("pMsg").textContent = "Elige primero la etapa."; return; }
   if (!isCaza(state.stageFilter)) { $("pMsg").textContent = "Las rutas alternativas solo se usan en etapas de Caza waypoint."; return; }
-  $("drawStart").click(); drawing.alt = true; renderDraw(); $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); };
-$("drawStart").onclick = () => { drawing = { pts: [], wpAt: [], hist: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
+  $("drawStart").click(); drawing.alt = true; renderDraw();
+  // in the app the route is drawn on the whole screen, and it comes back to the planner when finished
+  if (APP && !mapBox().classList.contains("full")) { drawing.back = true; setMapFull(true); renderDraw(); }
+  else $("gmap").scrollIntoView({ behavior: "smooth", block: "center" }); };
+const backToPlan = (d) => { if (d && d.back && APP) { setMapFull(false); setTab("plan"); window.scrollTo(0, 0); } };
+$("drawStart").onclick = (e) => {
+  // in the planner of a hunt, «Dibujar mi ruta» makes a route of mine in the proposals bar
+  if (e && e.isTrusted && state.tab === "plan" && state.stageFilter !== "all" && isCaza(state.stageFilter)) { $("pDraw").click(); return; }
+  drawing = { pts: [], wpAt: [], hist: [] }; $("drawMsg").textContent = ""; measure = []; renderDraw(); renderMap(); };
 $("drawAlt").onclick = async () => {
   if (!drawing || drawing.pts.length < 2) return;
   const wps = drawnWps(), n = plan.alts.filter((a) => a.own).length + 1;
   const a = { name: "Ruta alternativa" + (n > 1 ? " " + n : ""), own: true, km: kmOf([drawing.pts]), of: mapWps().length, extra: 0, sum: sumPts(wps),
     offKm: 0, satKm: 0, gapKm: 0, gaps: [], sat: [], pts: drawing.pts.slice(), wps, ids: new Set(wps.map((w) => w.id)) };
   plan.stage = state.stageFilter; plan.alts.push(a);
-  drawing = null; renderDraw();
+  const was = drawing; drawing = null; renderDraw(); backToPlan(was);
   await savePlan($("pMsg").textContent);
+  // it shows in the proposals bar, picked: «Confirmar» makes it the stage's route, as with the proposals
   pickAlt(plan.alts.length - 1);
 };
-$("drawCancel").onclick = () => { drawing = null; renderDraw(); renderMap(); };
+$("drawCancel").onclick = () => { const was = drawing; drawing = null; renderDraw(); renderMap(); backToPlan(was); };
 $("drawUndo").onclick = drawUndo;
 $("drawAll").onclick = () => { drawStep(); const l = mapWps(); drawing.pts = l.map((w) => [w.lat, w.lon]); drawing.wpAt = l.map((w) => w.id); renderDraw(); renderMap(); };
 // in the planner the drawn routes are numbered options of the stage

@@ -34,6 +34,7 @@ const audioOn = () => { try { actx = actx || new (window.AudioContext || window.
 ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, audioOn, { capture: true, passive: true }));
 function beep(times, ms, hz) {
   if (!actx) return;
+  if (actx.state === "suspended") actx.resume().catch(() => {});
   for (let i = 0; i < times; i++) {
     const t = actx.currentTime + i * (ms + 120) / 1000, o = actx.createOscillator(), g = actx.createGain();
     o.type = "square"; o.frequency.value = hz; g.gain.setValueAtTime(0.25, t); g.gain.setValueAtTime(0, t + ms / 1000);
@@ -150,11 +151,14 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     if (!("geolocation" in navigator)) { msg("Este navegador no tiene GPS."); return false; }
     if (watch !== null) return true;
     watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 });
+    // the screen stays on while the GPS is on: with it off the phone stops and the beeps don't sound
+    keepAwake(); sndAsk();
     msg("Buscando señal de GPS…"); ui(); return true;
   }
   function stopWatch() {
     if (watch !== null) navigator.geolocation.clearWatch(watch);
-    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; hdg.hidden = true; wpb.hidden = true; ui();
+    watch = null; layer.clearLayers(); dot = ring = head = null; course = undefined; cPrev = null; hdg.hidden = true; wpb.hidden = true; ui(); sndAsk();
+    if (!rec && wake) { wake.release().catch(() => {}); wake = null; }
   }
 
   function drawRec() {
@@ -165,7 +169,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
 
   // keeps the screen on while recording: with the screen off the phone stops giving the browser positions
   async function keepAwake() {
-    try { if (rec && "wakeLock" in navigator && document.visibilityState === "visible") wake = await navigator.wakeLock.request("screen"); } catch (e) { wake = null; }
+    try { if ((rec || watch !== null) && !wake && "wakeLock" in navigator && document.visibilityState === "visible") wake = await navigator.wakeLock.request("screen"); } catch (e) { wake = null; }
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
 
@@ -331,9 +335,21 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     hdg.innerHTML = course === undefined ? `<b>Rumbo</b><span class="big">—</span><small>muévete unos metros</small>`
       : `<b>Rumbo</b>${arrowSvg(course + bear(), "#1a73e8")}<span class="big">${String(Math.round(course) % 360).padStart(3, "0")}°</span><small>${card(course)}${spd ? " · " + Math.round(spd * 3.6) + " km/h" : ""}</small>`;
   }
-  // waypoint alerts whenever the GPS is on: 50 m one short beep, 20 m two short beeps, 5 m one long beep (taken)
+  // the browser only lets the page beep after a touch (after opening or updating the app there has been none):
+  // while the GPS is on and the sound is still locked, a notice asks for one touch
+  const snd = document.createElement("button"); snd.type = "button"; snd.className = "sndask"; snd.hidden = true;
+  snd.textContent = "🔇 Toca aquí para activar los pitidos de los waypoints";
+  L.DomEvent.disableClickPropagation(snd); map.getContainer().append(snd);
+  snd.onclick = () => { audioOn(); setTimeout(() => { beep(1, 150, 880); sndAsk(); }, 150); };
+  function sndAsk() { try { snd.hidden = watch === null || !!(actx && actx.state === "running"); } catch (e) {} }
+  ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => setTimeout(sndAsk, 200), { passive: true }));
+  setInterval(sndAsk, 3000);
+  // «Probar pitidos» in Ajustes: the three warnings one after the other
+  const tb = $("beepTest");
+  if (tb) tb.onclick = () => { audioOn(); setTimeout(() => { beep(1, 150, 880); setTimeout(() => beep(2, 150, 880), 1200); setTimeout(() => beep(1, 2000, 1320), 2800); sndAsk(); }, 150); };
+  // waypoint alerts whenever the GPS is on: 50 m one short beep, 10 m two short beeps, 5 m one long beep of 2 s (taken)
   const nav = { taken: new Set(), level: new Map(), lastTaken: null };
-  const NEAR2 = 20;
+  const NEAR2 = 10;
   /* ---------- «Llévame»: guided to one waypoint, with an arrow, the distance and a line to it ---------- */
   let goTo = null;
   const goLayer = L.layerGroup().addTo(map);
@@ -342,7 +358,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     goLayer.clearLayers(); if (!goTo) return false;
     const t = [goTo.lat, goTo.lon], d = meters(here, t), b = brg(here, t);
     if (d <= TAKEN) {
-      say(`Has llegado al waypoint ${goTo.name}`); beep(1, 1000, 1320);
+      say(`Has llegado al waypoint ${goTo.name}`); beep(1, 2000, 1320);
       wpb.hidden = false; wpb.innerHTML = `<span class="ok">✓ Has llegado a WP ${goTo.name}</span>`; goTo = null; return true;
     }
     L.polyline([here, t], { color: "#1a73e8", weight: 4, dashArray: "8 8", interactive: false }).addTo(goLayer);
@@ -372,7 +388,7 @@ export function setupGps({ map, sb, canEdit, rallyId, stage, user, writeErr, onS
     if (best.d <= TAKEN) {
       nav.taken.add(w.id); nav.lastTaken = { name: w.name, at: Date.now() };
       if (goTo && goTo.id === w.id) { goTo = null; goLayer.clearLayers(); say(`Has llegado al waypoint ${w.name}`); }
-      beep(1, 1000, 1320); try { navigator.vibrate && navigator.vibrate(800); } catch (e) {}
+      beep(1, 2000, 1320); try { navigator.vibrate && navigator.vibrate(2000); } catch (e) {}
       wpb.hidden = false; wpb.innerHTML = `<span class="ok">✓ WP ${w.name} cogido${w.pts ? " · " + w.pts + " pts" : ""}</span>`;
       return;
     }

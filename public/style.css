@@ -708,3 +708,6 @@ body.app .golist button { width: 100%; text-align: left; padding: 12px; font-siz
 body.app .golist li { border-bottom: 0; padding: 4px 0 }
 .navbox .gox { background: transparent; border: 1px solid rgba(255,255,255,.5); color: #fff; border-radius: 50%; width: 34px; height: 34px; padding: 0; font-size: 1rem; flex: none }
 .navbox .big { white-space: nowrap }
+/* the sound is still locked: one touch on this unlocks the beeps */
+.sndask { position: absolute; z-index: 1100; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 140px); background: #c62828; color: #fff; border: 0; border-radius: 10px; padding: 10px 14px; font: 700 .95rem var(--sans, system-ui); box-shadow: 0 4px 14px rgba(0,0,0,.4) }
+.sndask[hidden] { display: none }

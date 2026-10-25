@@ -84,7 +84,7 @@ const visibleTracks = () => filt.tracks ? rallyTracks().filter((t) => filt.rec =
 const trackWps = (t) => (t.wps || []).map((id) => state.wps.find((w) => w.id === id)).filter(Boolean);
 const sumPts = (list) => list.reduce((s, w) => s + (w.pts || 0), 0);
 // on the map every route is yellow and every waypoint green, so the two never get mixed up
-const TRACK = "#ffd600", WPC = "#1e9e3e";
+const TRACK = "#ffd600", WPC = "#1e9e3e", RECC = "#e53935"; // tracks yellow, waypoints green, routes recorded with the GPS red
 // each route proposal gets its own colour so they can be told apart on the map
 const ALT_COLS = ["#e53935", "#1e88e5", "#8e24aa", "#fb8c00", "#00897b", "#d81b60", "#6d4c41", "#3949ab"];
 const altCol = (i) => ALT_COLS[i % ALT_COLS.length];
@@ -742,9 +742,10 @@ function renderMap() {
   if (!list.length && !trks.length) return;
   const pts = list.map((w) => [w.lat, w.lon]);
   trks.forEach((t) => t.segs.forEach((seg) => {
+    const c = t.kind === "grabada" ? RECC : TRACK;
     L.polyline(seg, { color: "#000", weight: 6, opacity: .35, interactive: false }).addTo(layer);
-    L.polyline(seg, { color: TRACK, weight: 4, opacity: 1 }).bindTooltip(t.name).addTo(layer);
-    arrow(seg, TRACK);
+    L.polyline(seg, { color: c, weight: 4, opacity: 1 }).bindTooltip(t.name).addTo(layer);
+    arrow(seg, c);
     seg.forEach((p) => pts.push(p));
   }));
   // the stage's proposals show on every tab and every device: they are kept in the database
@@ -1243,7 +1244,7 @@ function renderRecorded() {
   const ul = $("recList"); ul.textContent = "";
   list.forEach((t) => {
     const li = document.createElement("li");
-    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = RECC;
     const m = t.meta || {}, secs = m.secs || 0;
     const nm = document.createElement("span"); nm.className = "em";
     nm.textContent = `${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (secs ? ` · ${Math.floor(secs / 3600)} h ${String(Math.floor(secs / 60) % 60).padStart(2, "0")} min` : "");
@@ -1377,7 +1378,7 @@ function renderRecTab() {
       const ul = document.createElement("ul"); ul.className = "tracks";
       mine.filter((t) => stageKey(t) === st).sort((a, b) => String(b.created).localeCompare(String(a.created))).forEach((t) => {
         const li = document.createElement("li");
-        const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = TRACK;
+        const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = t.kind === "grabada" ? RECC : TRACK;
         const nm = document.createElement("span"); nm.className = "em";
         nm.textContent = `${t.name} · ${kmOf(t.segs).toFixed(1)} km` + (fmtDur((t.meta || {}).secs) ? " · " + fmtDur(t.meta.secs) : "");
         const see = document.createElement("button"); see.type = "button"; see.className = "hl"; see.textContent = st !== "" ? "Ver con la etapa" : "Ver en el mapa";

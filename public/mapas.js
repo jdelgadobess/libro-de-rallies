@@ -145,15 +145,26 @@ const isContours = (m) => /^curvas/i.test(m.file || "");
 const isSlope = (m) => /^pendientes/i.test(m.file || "");
 const isOverlay = (m) => isContours(m) || isSlope(m);
 const SLOPE_KEY = [["#2ea043", "llano"], ["#78be3c", "5°"], ["#f0dc28", "10°"], ["#faaa1e", "15°"], ["#eb641e", "22°"], ["#d21e1e", "30°"], ["#821478", "45°"]];
-function contourStyle() {
+// coloured by height, like a topographic map: green in the lowlands, then yellow, orange, red and purple on the peaks
+const ELE_KEY = [[0, "#1f8a3c"], [400, "#7cb342"], [800, "#c9b81e"], [1200, "#e8901c"], [1700, "#d4471f"], [2300, "#a3203a"], [3000, "#6a1b7a"]];
+const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+function eleColor(e) {
+  e = +e || 0;
+  let i = 0; while (i < ELE_KEY.length - 1 && e >= ELE_KEY[i + 1][0]) i++;
+  if (i === ELE_KEY.length - 1) return ELE_KEY[i][1];
+  const [e0, c0] = ELE_KEY[i], [e1, c1] = ELE_KEY[i + 1], k = (e - e0) / (e1 - e0), a = hex(c0), b = hex(c1);
+  return "rgb(" + a.map((v, j) => Math.round(v + (b[j] - v) * k)).join(",") + ")";
+}
+function contourStyle(colored) {
   const P = window.protomapsL;
+  const col = (brown) => colored ? (z, f) => eleColor(f.props.ele) : brown;
   return {
     paintRules: [
-      { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: "#9c5a2b", width: 0.7, opacity: 0.65 }), filter: (z, f) => !f.props.idx },
-      { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: "#8b4513", width: 1.5, opacity: 0.85 }), filter: (z, f) => !!f.props.idx },
+      { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: col("#9c5a2b"), width: colored ? 0.9 : 0.7, opacity: colored ? 0.8 : 0.65 }), filter: (z, f) => !f.props.idx },
+      { dataLayer: "contours", symbolizer: new P.LineSymbolizer({ color: col("#8b4513"), width: colored ? 1.8 : 1.5, opacity: 0.9 }), filter: (z, f) => !!f.props.idx },
     ],
     labelRules: [
-      { dataLayer: "contours", symbolizer: new P.LineLabelSymbolizer({ labelProps: ["lbl"], fill: "#6b3410", stroke: "#fff8e8", width: 2.5, font: "500 11px sans-serif" }), filter: (z, f) => !!f.props.idx, minzoom: 10 },
+      { dataLayer: "contours", symbolizer: new P.LineLabelSymbolizer({ labelProps: ["lbl"], fill: col("#6b3410"), stroke: "#fff8e8", width: 2.5, font: "600 11px sans-serif" }), filter: (z, f) => !!f.props.idx, minzoom: 10 },
     ],
   };
 }
@@ -281,7 +292,7 @@ export function setupLayers(lmap) {
 
   const pref = (() => { try { return JSON.parse(localStorage.getItem("rally.layers")) || {}; } catch (e) { return {}; } })();
   const save = () => { try { localStorage.setItem("rally.layers", JSON.stringify(pref)); } catch (e) {} };
-  if (!pref.base || pref.base === "none") pref.base = "osm"; if (pref.sat === undefined) pref.sat = true; if (pref.op === undefined) pref.op = 100; pref.on = pref.on || [];
+  if (!pref.base || pref.base === "none") pref.base = "osm"; if (pref.sat === undefined) pref.sat = true; if (pref.op === undefined) pref.op = 100; if (pref.cc === undefined) pref.cc = true; pref.on = pref.on || [];
 
   const msg = (t) => { $("lyMsg").textContent = t || ""; };
   const apply = () => {
@@ -335,7 +346,7 @@ export function setupLayers(lmap) {
       layer = isSlope(m)
         ? new RasterPm({ src, pane: "slope", minZoom: 0, maxZoom: 19, minNativeZoom: src.minZoom, maxNativeZoom: src.maxZoom, bounds: src.bounds, attribution: "Pendientes © Copernicus DEM" })
         : isContours(m)
-        ? window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "contours", bounds: src.bounds, attribution: "Curvas © Copernicus DEM", ...contourStyle() })
+        ? window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "contours", bounds: src.bounds, attribution: "Curvas © Copernicus DEM", ...contourStyle(pref.cc) })
         : window.protomapsL.leafletLayer({ url: src.p, maxDataZoom: src.maxZoom, pane: "offline", bounds: src.bounds, attribution: "© colaboradores de OpenStreetMap · Protomaps", ...offroadStyle() });
       src.close = () => {};
     } else {
@@ -355,7 +366,7 @@ export function setupLayers(lmap) {
     try { maps = (await idb.all("maps")).filter((m) => m.blob || m.done); } catch (e) { msg("Este navegador no deja guardar mapas sin conexión."); return; }
     if (!maps.some((m) => /\.pmtiles$/i.test(m.file || "") && !isOverlay(m))) {
       const p = document.createElement("span"); p.className = "msg";
-      p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd): descárgalo aquí abajo y funcionará sin internet.";
+      p.textContent = "Este dispositivo aún no tiene el mapa de pistas (como OsmAnd): descárgalo aquí abajo junto con sus curvas de nivel y se verán juntos, sin internet.";
       box.append(p);
     }
     offerDownloads(maps);
@@ -377,7 +388,20 @@ export function setupLayers(lmap) {
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = m.name;
       const sz = document.createElement("small"); sz.textContent = mbTxt(m.size); nm.append(sz);
       l.append(cb, nm, rm); box.append(l);
-      if (isSlope(m) && !box.querySelector(".slopekey")) {
+      if (isContours(m) && !box.querySelector(".cckey")) {
+        const c = document.createElement("label"); c.className = "chk cc";
+        const t = document.createElement("input"); t.type = "checkbox"; t.className = "sw"; t.id = "lyCc"; t.checked = pref.cc;
+        t.onchange = async () => {
+          pref.cc = t.checked; save(); k.hidden = !t.checked;
+          // redraw the contour lines that are on with the new colours
+          for (const x of maps) if (isContours(x) && open.has(x.id)) { turnOff(x.id); try { await turnOn(x, false); } catch (e) {} }
+        };
+        c.append(t, " Curvas de nivel por colores (según la altura)");
+        const k = document.createElement("div"); k.className = "slopekey cckey"; k.hidden = !pref.cc;
+        k.innerHTML = ELE_KEY.map(([e, col]) => `<span><i style="background:${col}"></i>${e ? e + " m" : "0"}</span>`).join("");
+        box.append(c, k);
+      }
+      if (isSlope(m) && !box.querySelector(".slopekey:not(.cckey)")) {
         const k = document.createElement("div"); k.className = "slopekey";
         k.innerHTML = SLOPE_KEY.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("");
         box.append(k);

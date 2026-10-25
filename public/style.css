@@ -496,6 +496,7 @@ section.panel > h2:first-child { padding-bottom: 10px; border-bottom: 1px solid 
 .slopekey { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .75rem; color: var(--muted, #6b5a45); padding: 2px 4px 6px }
 .slopekey span { display: inline-flex; align-items: center; gap: 4px }
 .slopekey i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; opacity: .85 }
+.slopekey[hidden] { display: none }
 
 /* tabs: Libro de ruta has the map and the table across the page; year and stage are picked above the table */
 body:not(.tab-plan):not(.tab-imp) .desk { grid-template-columns: minmax(0, 1fr) }
